@@ -3,6 +3,7 @@
 #include <string>
 #include <map>
 #include <functional>
+#include <algorithm>
 
 #include <boost/filesystem.hpp>
 #include <boost/format.hpp>
@@ -23,7 +24,7 @@ enum KEY
   RIGHT_KEY = 65361
 };
 
-const std::string folder = "../../test_img/other/";
+const std::string folder = "../../test_img/inet/";
 
 boost::filesystem::path path(folder);
 int max_img_index = std::distance(boost::filesystem::directory_iterator(path),
@@ -115,46 +116,61 @@ void process()
   cv::Mat grayscale_img;
   cv::cvtColor(src_img, grayscale_img, CV_RGB2GRAY);
 
-  double m[3][5] = {{-0.0, -1.0, 0.0, 1.0, 0.0},
-                    {-1.0, -2.0, 0.0, 2.0, 1.0},
-                    {-0.0, -1.0, 0.0, 1.0, 0.0}};
+  double m[3][5] = {{-0.2, -1.0, 0.0, 1.0, 0.2},
+                    {-0.5, -2.0, 0.0, 2.0, 0.5},
+                    {-0.2, -1.0, 0.0, 1.0, 0.2}};
   cv::Mat edge_matrix(3, 5, CV_64FC1, m);
   cv::Mat edge_img;
   cv::filter2D(grayscale_img, edge_img, -1, edge_matrix);
 
   std::vector<double> rows;
-  int max_row = -1;
-  double max_row_value;
   for (int i = 0; i < edge_img.rows; ++i)
-  {
     rows.push_back(RMS(edge_img.row(i)));
 
-    if (max_row == -1)
-    {
-      max_row_value = rows[0];
-      max_row = 0;
-    }
+  int max_row = std::distance(rows.begin(),
+                              std::max_element(rows.begin() + src_img.rows * 2 / 5,
+                                               rows.end()));
 
-    if (max_row_value < rows[i])
-    {
-      max_row_value = rows[i];
-      max_row = i;
-    }
+  std::vector<double> rows_der;
+  for (unsigned i = 0; i < rows.size() - 2; ++i)
+    rows_der.push_back(std::fabs(rows[i + 2] - rows[i]));
+
+  int max_row_der = std::distance(rows_der.begin(),
+                                  std::max_element(rows_der.begin() + src_img.rows * 2 / 5,
+                                                   rows_der.end()));
+  double mean_row_der = mean(rows_der.begin(), rows_der.end(), 0.0);
+  if (rows_der[max_row_der] / mean_row_der > 8.0)
+  {
+    max_row = max_row_der;
+    std::cout << rows_der[max_row_der] << " " << mean_row_der << std::endl;
+  }
+
+  {
+    std::ofstream file;
+    file.open("rows", std::ios_base::trunc);
+    for (auto &row: rows)
+      file << row << std::endl;
+    file.close();
+
+    file.open("rows_der", std::ios_base::trunc);
+    for (auto &row: rows_der)
+      file << row << std::endl;
+    file.close();
+
+    file.open("row", std::ios_base::trunc);
+    for (int i = 0; i < edge_img.cols; ++i)
+      file << (int)edge_img.at<unsigned char>(max_row, i) << std::endl;
+    file.close();
   }
 
   cv::line(src_img, cv::Point(0, max_row), cv::Point(src_img.cols, max_row),
            cv::Scalar(255), 2);
 
-  std::ofstream file;
-  file.open("rows", std::ios_base::trunc);
-  for (auto &row: rows)
-    file << row << std::endl;
-  file.close();
+  cv::Mat thresh_edge_img;
+  cv::adaptiveThreshold(edge_img, thresh_edge_img, 255.0,
+                        CV_ADAPTIVE_THRESH_GAUSSIAN_C, CV_THRESH_BINARY,
+                        11, -64.0);
 
-  file.open("row", std::ios_base::trunc);
-  for (int i = 0; i < edge_img.cols; ++i)
-    file << (int)edge_img.at<unsigned char>(max_row, i) << std::endl;
-  file.close();
-
-  cv::imshow("image", src_img);
+  cv::imshow("src_img", src_img);
+  cv::imshow("edge_img", edge_img);
 }
