@@ -127,22 +127,22 @@ void process()
   for (int i = 0; i < edge_img.rows; ++i)
     rows.push_back(RMS(edge_img.row(i)));
 
-  int max_row = std::distance(rows.begin(),
-                              std::max_element(rows.begin() + src_img.rows * 2 / 5,
-                                               rows.end()));
+  int max_row_index = std::distance(rows.begin(),
+                                    std::max_element(rows.begin() + src_img.rows * 2 / 5,
+                                                     rows.end()));
 
   std::vector<double> rows_der;
   for (unsigned i = 0; i < rows.size() - 2; ++i)
     rows_der.push_back(std::fabs(rows[i + 2] - rows[i]));
 
-  int max_row_der = std::distance(rows_der.begin(),
-                                  std::max_element(rows_der.begin() + src_img.rows * 2 / 5,
-                                                   rows_der.end()));
+  int max_row_der_index = std::distance(rows_der.begin(),
+                                        std::max_element(rows_der.begin() + src_img.rows * 2 / 5,
+                                                         rows_der.end()));
   double mean_row_der = mean(rows_der.begin(), rows_der.end(), 0.0);
-  if (rows_der[max_row_der] / mean_row_der > 8.0)
+  if (rows_der[max_row_der_index] / mean_row_der > 8.0)
   {
-    max_row = max_row_der;
-    std::cout << rows_der[max_row_der] << " " << mean_row_der << std::endl;
+    max_row_index = max_row_der_index;
+    std::cout << rows_der[max_row_der_index] << " " << mean_row_der << std::endl;
   }
 
   {
@@ -159,11 +159,11 @@ void process()
 
     file.open("row", std::ios_base::trunc);
     for (int i = 0; i < edge_img.cols; ++i)
-      file << (int)edge_img.at<unsigned char>(max_row, i) << std::endl;
+      file << (int)edge_img.at<unsigned char>(max_row_index, i) << std::endl;
     file.close();
   }
 
-  cv::line(src_img, cv::Point(0, max_row), cv::Point(src_img.cols, max_row),
+  cv::line(src_img, cv::Point(0, max_row_index), cv::Point(src_img.cols, max_row_index),
            cv::Scalar(255), 2);
 
   cv::Mat thresh_edge_img;
