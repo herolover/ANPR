@@ -24,7 +24,7 @@ enum KEY
   RIGHT_KEY = 65361
 };
 
-const std::string folder = "../../test_img/inet/";
+const std::string folder = "../../test_img/my/";
 
 boost::filesystem::path path(folder);
 int max_img_index = std::distance(boost::filesystem::directory_iterator(path),
@@ -109,6 +109,17 @@ std::vector<T> simple_moving_average(const std::vector<T> &values,
 }
 
 
+template<class InputIt, class T> inline
+InputIt find(InputIt first, InputIt last, T global, T threshold)
+{
+  return std::find_if(first, last,
+                      [global, threshold](T value)
+  {
+    return value / global > threshold;
+  });
+}
+
+
 void process()
 {
   std::cout << folder + boost::str(boost::format("%03d.jpg") % img_index) << std::endl;
@@ -120,29 +131,54 @@ void process()
                     {-0.5, -2.0, 0.0, 2.0, 0.5},
                     {-0.2, -1.0, 0.0, 1.0, 0.2}};
   cv::Mat edge_matrix(3, 5, CV_64FC1, m);
-  cv::Mat edge_img;
-  cv::filter2D(grayscale_img, edge_img, -1, edge_matrix);
+  cv::Mat vert_edge_img;
+  cv::filter2D(grayscale_img, vert_edge_img, -1, edge_matrix);
+  cv::Mat hor_edge_img;
+  cv::filter2D(grayscale_img, hor_edge_img, -1, edge_matrix.t());
 
   std::vector<double> rows;
-  for (int i = 0; i < edge_img.rows; ++i)
-    rows.push_back(RMS(edge_img.row(i)));
+  for (int i = 0; i < vert_edge_img.rows; ++i)
+    rows.push_back(RMS(vert_edge_img.row(i)));
 
-  int max_row_index = std::distance(rows.begin(),
-                                    std::max_element(rows.begin() + src_img.rows * 2 / 5,
-                                                     rows.end()));
+  const int img_top_offset = src_img.rows * 1 / 3;
+  const int img_bottom_offset = src_img.rows * 1 / 9;
 
+  const unsigned window_size = 10;
   std::vector<double> rows_der;
-  for (unsigned i = 0; i < rows.size() - 2; ++i)
-    rows_der.push_back(std::fabs(rows[i + 2] - rows[i]));
-
-  int max_row_der_index = std::distance(rows_der.begin(),
-                                        std::max_element(rows_der.begin() + src_img.rows * 2 / 5,
-                                                         rows_der.end()));
-  double mean_row_der = mean(rows_der.begin(), rows_der.end(), 0.0);
-  if (rows_der[max_row_der_index] / mean_row_der > 8.0)
+  for (unsigned i = 0; i < rows.size() - window_size; ++i)
   {
-    max_row_index = max_row_der_index;
-    std::cout << rows_der[max_row_der_index] << " " << mean_row_der << std::endl;
+    double sum = 0.0;
+    for (unsigned j = i; j < i + window_size; ++j)
+      sum += rows[j + 1] - rows[j];
+
+    rows_der.push_back(sum);
+  }
+
+  auto gmax_elem = std::max_element(rows_der.begin() + img_top_offset,
+                                    rows_der.end() - img_bottom_offset);
+
+  const double threshold = 0.75;
+  std::vector<cv::Rect> rects;
+
+  auto max_elem = rows_der.begin() + img_top_offset;
+  auto min_elem = rows_der.begin() + img_top_offset;
+  while (true)
+  {
+    max_elem = find(min_elem, rows_der.end(), *gmax_elem, threshold);
+    auto next_max_elem = find(max_elem + 20, rows_der.end(), *gmax_elem, threshold);
+    min_elem = std::min_element(max_elem, next_max_elem);
+
+    if (max_elem != rows_der.end() && min_elem != rows_der.end())
+    {
+      int max_elem_index = std::distance(rows_der.begin(), max_elem) + window_size * 3 / 4;
+      int min_elem_index = std::distance(rows_der.begin(), min_elem) + window_size * 3 / 4;
+
+      rects.push_back(cv::Rect(0, max_elem_index,
+                               src_img.cols,
+                               min_elem_index - max_elem_index));
+    }
+    else
+      break;
   }
 
   {
@@ -156,21 +192,12 @@ void process()
     for (auto &row: rows_der)
       file << row << std::endl;
     file.close();
-
-    file.open("row", std::ios_base::trunc);
-    for (int i = 0; i < edge_img.cols; ++i)
-      file << (int)edge_img.at<unsigned char>(max_row_index, i) << std::endl;
-    file.close();
   }
 
-  cv::line(src_img, cv::Point(0, max_row_index), cv::Point(src_img.cols, max_row_index),
-           cv::Scalar(255), 2);
-
-  cv::Mat thresh_edge_img;
-  cv::adaptiveThreshold(edge_img, thresh_edge_img, 255.0,
-                        CV_ADAPTIVE_THRESH_GAUSSIAN_C, CV_THRESH_BINARY,
-                        11, -64.0);
+  for (auto &rect: rects)
+    cv::rectangle(src_img, rect, cv::Scalar(255), 2);
 
   cv::imshow("src_img", src_img);
-  cv::imshow("edge_img", edge_img);
+  cv::imshow("vert_edge_img", vert_edge_img);
+  cv::imshow("hor_edge_img", hor_edge_img);
 }
