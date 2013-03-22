@@ -8,8 +8,7 @@
 #include <boost/filesystem.hpp>
 #include <boost/format.hpp>
 
-#include <opencv/cv.h>
-#include <opencv/highgui.h>
+#include <opencv2/opencv.hpp>
 
 
 void left_key_handler();
@@ -120,21 +119,44 @@ InputIt find(InputIt first, InputIt last, T global, T threshold)
 }
 
 
+template<class InputIt, class T>
+std::vector<InputIt> find_local_extremums(InputIt first, InputIt last,
+                                          T global, T threshold)
+{
+  std::vector<InputIt> local_extremums;
+
+  while (first < last)
+  {
+    InputIt loc_ext = find(first, last, global, threshold);
+    local_extremums.push_back(loc_ext);
+
+    first = loc_ext + 20;
+  }
+
+  return local_extremums;
+}
+
+
 void process()
 {
   std::cout << folder + boost::str(boost::format("%03d.jpg") % img_index) << std::endl;
   cv::Mat src_img = cv::imread(folder + boost::str(boost::format("%03d.jpg") % img_index));
+
   cv::Mat grayscale_img;
   cv::cvtColor(src_img, grayscale_img, CV_RGB2GRAY);
+
+  cv::Mat denoised_img;
+  cv::fastNlMeansDenoising(grayscale_img, denoised_img);
+//  denoised_img = grayscale_img;
 
   double m[3][5] = {{-0.2, -1.0, 0.0, 1.0, 0.2},
                     {-0.5, -2.0, 0.0, 2.0, 0.5},
                     {-0.2, -1.0, 0.0, 1.0, 0.2}};
   cv::Mat edge_matrix(3, 5, CV_64FC1, m);
   cv::Mat vert_edge_img;
-  cv::filter2D(grayscale_img, vert_edge_img, -1, edge_matrix);
+  cv::filter2D(denoised_img, vert_edge_img, -1, edge_matrix);
   cv::Mat hor_edge_img;
-  cv::filter2D(grayscale_img, hor_edge_img, -1, edge_matrix.t());
+  cv::filter2D(denoised_img, hor_edge_img, -1, edge_matrix.t());
 
   std::vector<double> rows;
   for (int i = 0; i < vert_edge_img.rows; ++i)
@@ -156,17 +178,29 @@ void process()
 
   auto gmax_elem = std::max_element(rows_der.begin() + img_top_offset,
                                     rows_der.end() - img_bottom_offset);
+  auto gmin_elem = std::min_element(rows_der.begin() + img_top_offset,
+                                    rows_der.end() - img_bottom_offset);
 
-  const double threshold = 0.75;
+  const double threshold = 0.5;
+
+  auto loc_max = find_local_extremums(rows_der.begin() + img_top_offset,
+                                      rows_der.end() - img_bottom_offset,
+                                      *gmax_elem, threshold);
+  auto loc_min = find_local_extremums(loc_max.front(),
+                                      rows_der.end() - img_bottom_offset,
+                                      *gmin_elem, threshold);
+
   std::vector<cv::Rect> rects;
 
-  auto max_elem = rows_der.begin() + img_top_offset;
-  auto min_elem = rows_der.begin() + img_top_offset;
-  while (true)
+  for (unsigned i = 0; i < loc_max.size() - 1; ++i)
   {
-    max_elem = find(min_elem, rows_der.end(), *gmax_elem, threshold);
-    auto next_max_elem = find(max_elem + 20, rows_der.end(), *gmax_elem, threshold);
-    min_elem = std::min_element(max_elem, next_max_elem);
+    auto max_elem = loc_max[i];
+    auto next_max_elem = loc_max[i + 1];
+    auto min_elem = *std::find_if(loc_min.begin(), loc_min.end(),
+                                  [max_elem, next_max_elem](std::vector<double>::iterator point)
+    {
+      return point > max_elem && point < next_max_elem;
+    });
 
     if (max_elem != rows_der.end() && min_elem != rows_der.end())
     {
@@ -177,8 +211,6 @@ void process()
                                src_img.cols,
                                min_elem_index - max_elem_index));
     }
-    else
-      break;
   }
 
   {

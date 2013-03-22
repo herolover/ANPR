@@ -3,7 +3,7 @@
 program_name := ./bin/ANPR
 source_dirs  := .
 include_dirs := .
-link_flags   := -lopencv_highgui -lopencv_core -lopencv_imgproc -lrt -lboost_system -lboost_filesystem
+link_flags   := -lopencv_highgui -lopencv_core -lopencv_imgproc -lrt -lboost_system -lboost_filesystem -lopencv_photo
 lib_dirs     := .
 compiler_flags :=  -Wall -g -std=c++11
 
