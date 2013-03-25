@@ -121,30 +121,57 @@ std::vector<T> simple_moving_average(const std::vector<T> &values,
 }
 
 
-template<class InputIt, class T> inline
-InputIt find(InputIt first, InputIt last, T global, T threshold)
+template<class InputIt>
+InputIt find(InputIt first, InputIt last, InputIt global, double threshold,
+             const std::vector<std::pair<InputIt, InputIt>> &ignored_ranges)
 {
-  return std::find_if(first, last,
-                      [global, threshold](T value)
+  bool is_inited = false;
+  InputIt loc_ext = last;
+  for (; first != last; ++first)
   {
-    return value / global > threshold;
-  });
+    bool ignore_value = false;
+
+    if ((*first) / (*global) < threshold)
+      ignore_value = true;
+
+    for (auto &range: ignored_ranges)
+      if (first > range.first && first < range.second)
+      {
+        ignore_value = true;
+        break;
+      }
+
+    if (!ignore_value)
+      if (!is_inited || (*first) / (*loc_ext) > 1.0)
+      {
+        loc_ext = first;
+        is_inited = true;
+      }
+  }
+
+  return loc_ext;
 }
 
 
-template<class InputIt, class T>
+template<class InputIt>
 std::vector<InputIt> find_local_extremums(InputIt first, InputIt last,
-                                          T global, T threshold)
+                                          InputIt global, double threshold)
 {
   std::vector<InputIt> local_extremums;
 
-  while (first < last)
-  {
-    InputIt loc_ext = find(first, last, global, threshold);
-    local_extremums.push_back(loc_ext);
+  std::vector<std::pair<InputIt, InputIt>> ignored_ranges;
 
-    first = loc_ext + 20;
+  InputIt local_extremum = first;
+  while (local_extremum != last)
+  {
+    local_extremum = find(first, last, global, threshold, ignored_ranges);
+
+    local_extremums.push_back(local_extremum);
+    ignored_ranges.push_back(std::make_pair(local_extremum - 20,
+                                            local_extremum + 20));
   }
+
+  std::sort(local_extremums.begin(), local_extremums.end());
 
   return local_extremums;
 }
@@ -210,41 +237,44 @@ struct Area
 
 
 template<class InputIt>
-std::vector<std::pair<int, int> > compute_local_pairs(InputIt first,
-                                                      InputIt last,
-                                                      int front_offset,
-                                                      int back_offset,
-                                                      double threshold)
+std::vector<std::pair<int, int> > find_local_pairs(InputIt first,
+                                                   InputIt last,
+                                                   double threshold)
 {
-  auto gmax_elem = std::max_element(first + front_offset, last - back_offset);
-  auto gmin_elem = std::min_element(first + front_offset, last - back_offset);
+  auto global_max_element = std::max_element(first, last);
+  auto global_min_element = std::min_element(first, last);
 
-  auto loc_max = find_local_extremums(first + front_offset,
-                                      last - back_offset,
-                                      *gmax_elem, threshold);
-  auto loc_min = find_local_extremums(loc_max.front(),
-                                      last - back_offset,
-                                      *gmin_elem, threshold);
+  auto local_maximums = find_local_extremums(first, last,
+                                             global_max_element, threshold);
+  auto local_minimums = find_local_extremums(first, last,
+                                             global_min_element, threshold);
 
   std::vector<std::pair<int, int>> pairs;
 
-  for (unsigned i = 0; i < loc_max.size() - 1; ++i)
+  for (unsigned i = 0; i < local_maximums.size() - 1; ++i)
   {
-    auto max_elem = loc_max[i];
-    auto next_max_elem = loc_max[i + 1];
-    auto min_elem = std::find_if(loc_min.begin(), loc_min.end(),
-                                 [max_elem, next_max_elem](const InputIt &point)
-    {
-      return point > max_elem && point < next_max_elem;
-    });
+    auto max_element = local_maximums[i];
 
-    if (min_elem != loc_min.end())
+    for (unsigned j = i + 1; j < local_maximums.size(); ++j)
     {
-      std::pair<int, int> pair;
-      pair.first = std::distance(first, max_elem);
-      pair.second = std::distance(first, *min_elem);
+      auto next_max_element = local_maximums[j];
+      auto min_element = std::find_if(local_minimums.begin(),
+                                      local_minimums.end(),
+                                      [max_element, next_max_element](const InputIt &element)
+      {
+        return element > max_element && element < next_max_element;
+      });
 
-      pairs.push_back(pair);
+      if (min_element != local_minimums.end())
+      {
+        std::pair<int, int> pair;
+        pair.first = std::distance(first, max_element);
+        pair.second = std::distance(first, *min_element);
+
+        pairs.push_back(pair);
+
+        break;
+      }
     }
   }
 
@@ -282,29 +312,35 @@ void process()
   for (int i = 0; i < thresh_vert_edge_img.rows; ++i)
     rows.push_back(row_RMS(thresh_vert_edge_img.row(i)));
 
+  rows = simple_moving_average(rows, 5, 0.0);
+
   const int img_top_offset = src_img.rows * 1 / 3;
   const int img_bottom_offset = src_img.rows * 1 / 9;
 
   const int window_size = 10;
   std::vector<double> rows_der = compute_derivative(rows, window_size);
+  rows_der = simple_moving_average(rows_der, 5, 0.0);
 
-  auto pairs = compute_local_pairs(rows_der.begin(), rows_der.end(),
-                                   img_top_offset, img_bottom_offset, 0.5);
+  auto pairs = find_local_pairs(rows_der.begin() + img_top_offset,
+                                rows_der.end() - img_bottom_offset,
+                                0.5);
 
   std::vector<Area> areas;
   for (auto &pair: pairs)
   {
     Area area;
-    pair.first += window_size;
-    pair.second += window_size;
+    pair.first += window_size + img_top_offset;
+    pair.second += window_size + img_top_offset;
     area.rect = cv::Rect(0, pair.first, src_img.cols, pair.second - pair.first);
     areas.push_back(area);
   }
 
+  std::cout << std::endl;
+
   for (auto &area: areas)
   {
-    int min_line = area.rect.y - 10;
-    int max_line = area.rect.y + area.rect.height + 10;
+    int min_line = area.rect.y - 5;
+    int max_line = area.rect.y + area.rect.height + 5;
 
     if (min_line < 0)
       min_line = 0;
@@ -319,22 +355,31 @@ void process()
 
     area.cols_der = compute_derivative(area.cols, 20);
 
-    auto area_pairs = compute_local_pairs(area.cols_der.begin(),
-                                          area.cols_der.end(), 0, 0, 0.5);
-    auto broadest_pair = std::max_element(area_pairs.begin(),
-                                          area_pairs.end(),
-                                          [](const std::pair<int, int> &a,
-                                             const std::pair<int, int> &b)
+    const int img_offset_left = src_img.cols / 5;
+    const int img_offset_right = src_img.cols / 5;
+    auto area_pairs = find_local_pairs(area.cols_der.begin() + img_offset_left,
+                                       area.cols_der.end() - img_offset_right,
+                                       0.5);
+
+    if (area_pairs.size() > 0)
     {
-      return a.second - a.first < b.second - b.first;
-    });
+      auto broadest_pair = std::max_element(area_pairs.begin(),
+                                            area_pairs.end(),
+                                            [](const std::pair<int, int> &a,
+                                               const std::pair<int, int> &b)
+      {
+        return a.second - a.first < b.second - b.first;
+      });
 
-    // yes, it's magic
-    broadest_pair->first += 23;
-    broadest_pair->second += 23;
+      // yes, it's magic
+      broadest_pair->first += 15 + img_offset_left;
+      broadest_pair->second += 15 + img_offset_left;
 
-    area.rect.x = broadest_pair->first;
-    area.rect.width = broadest_pair->second - broadest_pair->first;
+      std::cout << broadest_pair->first << " " << broadest_pair->second << std::endl;
+
+      area.rect.x = broadest_pair->first;
+      area.rect.width = broadest_pair->second - broadest_pair->first;
+    }
   }
 
   {
