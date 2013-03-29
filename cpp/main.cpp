@@ -24,13 +24,13 @@ enum KEY
   RIGHT_KEY = 65361
 };
 
-const std::string folder = "../../test_img/other/";
+const std::string folder = "../../test_img/my/";
 
 boost::filesystem::path path(folder);
 int max_img_index = std::distance(boost::filesystem::directory_iterator(path),
                                   boost::filesystem::directory_iterator());
 
-int img_index = 0;
+int img_index = 30;
 
 std::map<KEY, std::function<void ()>> key_handlers =
 {
@@ -239,7 +239,7 @@ std::vector<std::pair<InputIt, InputIt> > find_local_pairs(InputIt first,
 //  auto global_minimum = std::min_element(first, last);
   auto mean = compute_mean(first, last, 0.0);
   double abs_threshold = (*global_maximum - mean) * threshold + mean;
-  std::cout << abs_threshold << std::endl;
+  std::cout << "mean: " << mean << "abs thresh: " << abs_threshold << std::endl;
 
   std::vector<std::pair<InputIt, InputIt> > local_pairs;
   std::vector<std::pair<InputIt, InputIt> > ignored_ranges;
@@ -320,16 +320,66 @@ void save_to_file(const std::string &filename, InputIt first, InputIt last)
 }
 
 
-struct Area
+struct Region
 {
   cv::Rect rect;
   std::vector<double> cols;
-
-  cv::Mat src_img;
-  cv::Mat grayscale_img;
-  cv::Mat hor_img;
-  cv::Mat vert_img;
+  cv::Mat img;
 };
+
+
+cv::Rect operator * (const cv::Rect &rect, double k)
+{
+  cv::Rect new_rect(rect);
+  new_rect.x *= k;
+  new_rect.y *= k;
+  new_rect.width *= k;
+  new_rect.height *= k;
+
+  return new_rect;
+}
+
+
+void draw_area(cv::Mat &dst_img, std::vector<cv::Point> &area, int color)
+{
+  for (auto &point: area)
+    dst_img.at<unsigned char>(point) = color;
+}
+
+
+void walk_on_area(cv::Mat &threshold_img, std::vector<cv::Point> &area,
+                  const cv::Point &point)
+{
+  if (point.x >= 0 && point.x < threshold_img.cols &&
+      point.y >= 0 && point.y < threshold_img.rows &&
+      threshold_img.at<unsigned char>(point) > 0)
+  {
+    threshold_img.at<unsigned char>(point) = 0;
+    area.push_back(point);
+
+    walk_on_area(threshold_img, area, point + cv::Point(-1,  0));
+    walk_on_area(threshold_img, area, point + cv::Point( 1,  0));
+    walk_on_area(threshold_img, area, point + cv::Point( 0, -1));
+    walk_on_area(threshold_img, area, point + cv::Point( 0,  1));
+  }
+}
+
+
+std::vector<std::vector<cv::Point> > find_filled_areas(cv::Mat &threshold_img)
+{
+  std::vector<std::vector<cv::Point> > areas;
+
+  for (int x = 0; x < threshold_img.cols; ++x)
+    for (int y = 0; y < threshold_img.rows; ++y)
+      if (threshold_img.at<unsigned char>(y, x) > 0)
+      {
+        std::vector<cv::Point> area;
+        walk_on_area(threshold_img, area, cv::Point(x, y));
+        areas.push_back(area);
+      }
+
+  return areas;
+}
 
 
 void process()
@@ -337,8 +387,14 @@ void process()
   std::cout << folder + boost::str(boost::format("%03d.jpg") % img_index) << std::endl;
   cv::Mat src_img = cv::imread(folder + boost::str(boost::format("%03d.jpg") % img_index));
 
+  cv::Mat small_src_img;
+  int width = 640;
+  double ratio = (double)src_img.cols / width;
+  cv::Size2f size(width, src_img.rows / ratio);
+  cv::resize(src_img, small_src_img, size);
+
   cv::Mat grayscale_img;
-  cv::cvtColor(src_img, grayscale_img, CV_RGB2GRAY);
+  cv::cvtColor(small_src_img, grayscale_img, CV_RGB2GRAY);
 
   cv::Mat denoised_img;
 //  cv::fastNlMeansDenoising(grayscale_img, denoised_img);
@@ -366,65 +422,158 @@ void process()
 
   save_to_file("rows", rows.begin(), rows.end());
 
-  const int img_top_offset = src_img.rows * 1 / 4;
-  const int img_bottom_offset = src_img.rows * 1 / 9;
+  const int img_top_offset = small_src_img.rows * 1 / 4;
+  const int img_bottom_offset = small_src_img.rows * 1 / 9;
   auto row_pairs = find_local_pairs(rows.begin() + img_top_offset,
                                     rows.end() - img_bottom_offset,
                                     0.4);
 
-  std::vector<Area> areas;
+  std::cout << std::endl;
+
+  std::vector<Region> regions;
   for (unsigned i = 0; i < row_pairs.size(); ++i)
   {
-    int top_bound = std::distance(rows.begin(), row_pairs[i].first) - 5;
-    int bottom_bound = std::distance(rows.begin(), row_pairs[i].second) + 5;
+    const int margin = 10;
+    int top_bound = std::distance(rows.begin(), row_pairs[i].first) - margin;
+    int bottom_bound = std::distance(rows.begin(), row_pairs[i].second) + margin;
 
-    std::cout << top_bound << " " << bottom_bound << std::endl;
+//    std::cout << top_bound << " " << bottom_bound << std::endl;
 
-    thresh_vert_edge_img = thresh_hor_edge_img;
+    thresh_hor_edge_img += thresh_vert_edge_img;
 
-    Area area;
-    cv::Mat rows = thresh_vert_edge_img.rowRange(top_bound, bottom_bound);
+    Region region;
+    cv::Mat rows = thresh_hor_edge_img.rowRange(top_bound, bottom_bound);
     for (int i = 0; i < rows.cols; ++i)
-      area.cols.push_back(col_RMS(rows.col(i)));
+      region.cols.push_back(col_RMS(rows.col(i)));
 
-    area.cols = simple_moving_average(area.cols, 50, 0.0);
+    region.cols = simple_moving_average(region.cols, 30, 0.0);
 
     save_to_file(boost::str(boost::format("cols_%1%") % i),
-                 area.cols.begin(), area.cols.end());
+                 region.cols.begin(), region.cols.end());
 
-    const int img_offset_left = src_img.cols / 8;
-    const int img_offset_right = src_img.cols / 8;
-    auto col_pairs = find_local_pairs(area.cols.begin() + img_offset_left,
-                                      area.cols.end() - img_offset_right,
+    const int img_offset_left = small_src_img.cols / 8;
+    const int img_offset_right = small_src_img.cols / 8;
+    auto col_pairs = find_local_pairs(region.cols.begin() + img_offset_left,
+                                      region.cols.end() - img_offset_right,
                                       0.05);
 
 
     for (auto &col_pair: col_pairs)
     {
-      int left_bound = std::distance(area.cols.begin(), col_pair.first) - 5;
-      int right_bound = std::distance(area.cols.begin(), col_pair.second) + 5;
+      int left_bound = std::distance(region.cols.begin(), col_pair.first) - margin;
+      int right_bound = std::distance(region.cols.begin(), col_pair.second) + margin;
 
-      area.rect.x = left_bound;
-      area.rect.y = top_bound;
-      area.rect.height = bottom_bound - top_bound;
-      area.rect.width = right_bound - left_bound;
+      region.rect.x = left_bound;
+      region.rect.y = top_bound;
+      region.rect.height = bottom_bound - top_bound;
+      region.rect.width = right_bound - left_bound;
 
-      area.src_img = src_img(area.rect);
-      area.grayscale_img = grayscale_img(area.rect);
-      area.hor_img = thresh_hor_edge_img(area.rect);
-      area.vert_img = thresh_vert_edge_img(area.rect);
+      region.img = src_img(region.rect * ratio);
 
-      areas.push_back(area);
+      regions.push_back(region);
     }
   }
 
-  for (auto &area: areas)
-    cv::rectangle(src_img, area.rect, cv::Scalar(255), 2);
+  for (auto &area: regions)
+    cv::rectangle(small_src_img, area.rect, cv::Scalar(255), 2);
 
-  cv::imshow("src_img", src_img);
-  if (areas.size() > 0)
-    cv::imshow("plate", areas[0].src_img);
 
-  cv::imshow("thresh_vert_edge_img", thresh_vert_edge_img);
+  if (regions.size() > 0)
+  {
+    cv::Mat grayscale_plate;
+    cv::cvtColor(regions[0].img, grayscale_plate, CV_RGB2GRAY);
+
+    cv::Mat hor_edge_plate;
+    cv::filter2D(grayscale_plate, hor_edge_plate, -1, edge_matrix.t());
+
+    cv::Mat denoised_hor_edge_plate;
+    adap_threshold(hor_edge_plate, denoised_hor_edge_plate, 150);
+
+//    std::vector<double> cols;
+//    for (int i = 0; i < hor_edge_plate.cols; ++i)
+//      cols.push_back(col_RMS(hor_edge_plate.col(i)));
+
+//    cols = simple_moving_average(cols, 50, 0.0);
+
+//    save_to_file("plate_cols", cols.begin(), cols.end());
+
+//    cv::Mat canny;
+//    cv::Canny(grayscale_plate, canny, 100, 200);
+
+    cv::Mat threshold_plate;
+    cv::adaptiveThreshold(grayscale_plate, threshold_plate, 255.0,
+                          CV_ADAPTIVE_THRESH_GAUSSIAN_C, CV_THRESH_BINARY_INV,
+                          81, 5.0);
+
+    cv::Mat threshold_plate_copy;
+    threshold_plate.copyTo(threshold_plate_copy);
+
+//    std::vector<std::vector<cv::Point> > contours = cv::findContours(threshold_plate_copy,
+//                                                                     contours,
+//                                                                     )
+
+//    std::vector<std::vector<cv::Point> > areas = find_filled_areas(threshold_plate_copy);
+
+//    std::sort(areas.begin(), areas.end(),
+//              [](const std::vector<cv::Point> &a, const std::vector<cv::Point> &b)
+//    {
+//      cv::Rect a_bound = cv::boundingRect(a);
+//      cv::Rect b_bound = cv::boundingRect(b);
+//      return a_bound.height > b_bound.height;
+//    });
+
+//    for (unsigned i = 0; i < areas.size(); ++i)
+//    {
+//      cv::Rect bound = cv::boundingRect(areas[i]);
+//      draw_area(threshold_plate_copy, areas[i], rand() % 255);
+//      double k0 = 1.2;
+//      double k1 = 0.25;
+//      double proportion = (double)bound.width / bound.height;
+//      if (proportion > k0 ||
+//          proportion < k1 ||
+//          areas[i].size() < 60)
+//      {
+//        draw_area(threshold_plate, areas[i], 0);
+//        areas.erase(areas.begin() + i);
+//        i -= 1;
+//      }
+//      else// if (i + 1 < areas.size())
+//      {
+
+//        cv::Rect max_bound = cv::boundingRect(areas[0]);
+//        std::cout << (double)bound.height / max_bound.height << std::endl;
+//      }
+//    }
+
+    std::vector<cv::Vec2f> lines;
+    cv::HoughLines(denoised_hor_edge_plate, lines, 1.0, CV_PI / 360.0, 230);
+
+    cv::Mat deskewed_plate;
+    if (lines.size() > 0)
+    {
+      double square_sum = 0.0;
+      for (auto &line: lines)
+        square_sum += line[1] * line[1];
+      double angle = sqrt(square_sum / lines.size());
+
+      std::cout << angle * 180.0 / CV_PI << std::endl;
+
+      cv::Mat skew_mat = cv::Mat::eye(2, 3, CV_64FC1);
+      skew_mat.at<double>(1, 0) = tan(CV_PI * 0.5 - angle);
+
+      cv::warpAffine(threshold_plate, deskewed_plate, skew_mat,
+                     cv::Size(regions[0].img.cols, regions[0].img.rows));
+    }
+    else
+      deskewed_plate = threshold_plate;
+
+    cv::imshow("plate", deskewed_plate);
+    cv::imshow("grayscale", hor_edge_plate);
+    cv::imwrite(folder + boost::str(boost::format("plate_%03d.jpg") % img_index),
+                threshold_plate);
+  }
+
+  cv::imshow("src_img", small_src_img);
+//  cv::imshow("thresh_vert_edge_img", thresh_vert_edge_img);
 //  cv::imshow("thresh_hor_edge_img", thresh_hor_edge_img);
 }
