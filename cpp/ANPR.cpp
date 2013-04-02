@@ -3,9 +3,13 @@
 #include <string>
 
 #include <boost/format.hpp>
+#include <tesseract/baseapi.h>
 
 #include "help_alg.h"
 #include "help_opencv.h"
+
+
+#include <stdio.h>
 
 
 void ANPR::set_image(const cv::Mat &image)
@@ -184,119 +188,55 @@ std::string ANPR::recognize_text(const cv::Mat &image) const
   cv::Mat threshold_image;
   cv::adaptiveThreshold(proc_image, threshold_image, 255.0,
                         CV_ADAPTIVE_THRESH_GAUSSIAN_C, CV_THRESH_BINARY_INV,
-                        81, 10.0);
+                        151, 0.0);
 
-  std::vector<std::vector<cv::Point> > areas = find_filled_areas(threshold_image.clone());
 
-  // remove too extended areas or too small
+  // fill a small noise on a characters
+  std::vector<std::vector<cv::Point> > noisy_areas = find_filled_areas(threshold_image.clone(), 0);
+  for (auto &area: noisy_areas)
+    if (area.size() < 60)
+      draw_area(threshold_image, area, 255);
+
+
+  std::vector<std::vector<cv::Point> > areas = find_filled_areas(threshold_image.clone(), 255);
+
+  // remove too wide or too small areas
   areas.erase(std::remove_if(areas.begin(), areas.end(),
-                             [](const std::vector<cv::Point> &area)
+                             [threshold_image](const std::vector<cv::Point> &area)
   {
     cv::Rect area_bound = cv::boundingRect(area);
 
     const double k0 = 1.2;
-    const double k1 = 0.25;
+    const double k1 = 0.4;
 
     double ratio = (double)area_bound.width / area_bound.height;
 
-    return ratio > k0 || ratio < k1 || area.size() < 60;
+    return ratio > k0 || ratio < k1 ||
+           (double)area.size() / threshold_image.total() < 0.006 ||
+           area_bound.height == threshold_image.size().height;
   }), areas.end());
 
 
-  std::sort(areas.begin(), areas.end(),
-            [](const std::vector<cv::Point> &a, const std::vector<cv::Point> &b)
-  {
-    cv::Rect a_bound = cv::boundingRect(a);
-    cv::Rect b_bound = cv::boundingRect(b);
-
-    return a_bound.height > b_bound.height;
-  });
-
-  for (auto &area: areas)
-  {
-    cv::Rect area_bound = cv::boundingRect(area);
-    std::cout << area_bound.height << std::endl;
-  }
-
-  // union areas to groups
-  std::vector<std::vector<unsigned> > areas_groups;
-  std::vector<double> areas_groups_rms_heights;
-  std::vector<unsigned> group;
-  std::vector<double> group_heights;
-  for (unsigned i = 0; i < areas.size(); ++i)
-  {
-    cv::Rect area_bound = cv::boundingRect(areas[i]);
-    if (group.size() == 0 ||
-        std::fabs(compute_RMS(group_heights.begin(), group_heights.end(), 0.0) / area_bound.height - 1.0) < 0.13)
-    {
-      group.push_back(i);
-      group_heights.push_back(area_bound.height);
-    }
-    else
-    {
-      areas_groups.push_back(group);
-      areas_groups_rms_heights.push_back(compute_RMS(group_heights.begin(),
-                                                     group_heights.end(), 0.0));
-      group.clear();
-      group_heights.clear();
-
-      i -= 1;
-    }
-  }
-
-  for (unsigned i = 0; i < areas_groups.size(); ++i)
-  {
-    for (auto area_index: areas_groups[i])
-      std::cout << area_index << " ";
-    std::cout << areas_groups_rms_heights[i] << std::endl;
-  }
-
-  // groups analysis
-  std::vector<unsigned> symbols_group;
-  const double reference_group_ratio = 0.75;
-  const double eps = 0.05;
-  for (unsigned i = 0; i < areas_groups.size(); ++i)
-    for (unsigned j = 0; j < areas_groups.size(); ++j)
-    {
-      if (areas_groups[i].size() == 3 && areas_groups[j].size() == 5 &&
-          std::fabs(areas_groups_rms_heights[j] / areas_groups_rms_heights[i] - reference_group_ratio) < eps)
-      {
-//        std::cout << areas_groups_rms_heights[i] << " " << areas_groups_rms_heights[j] << " ";
-//        std::cout << std::fabs(areas_groups_rms_heights[j] / areas_groups_rms_heights[i] - reference_group_ratio) << std::endl;
-        for (auto area_index: areas_groups[i])
-          symbols_group.push_back(area_index);
-        for (auto area_index: areas_groups[j])
-          symbols_group.push_back(area_index);
-      }
-    }
-
   threshold_image = cv::Mat(threshold_image.size(), threshold_image.type());
-
   for (auto &area: areas)
-    draw_area(threshold_image, area, 128);
+    draw_area(threshold_image, area, 255);
 
-//  const double reference_ratio = 0.75;
-//  const double eps = 0.05;
-//  for (auto &area_0: areas)
-//    for (auto &area_1: areas)
-//    {
-//      cv::Rect area_0_bound = cv::boundingRect(area_0);
-//      cv::Rect area_1_bound = cv::boundingRect(area_1);
+  tesseract::TessBaseAPI tess_api;
+  tess_api.Init("tessdata", "eng");
+  tess_api.SetPageSegMode(tesseract::PSM_SINGLE_LINE);
+  tess_api.SetVariable("tessedit_char_whitelist", "ABCEHKMOPTXY1234567890");
 
-//      double ratio = (double)area_0_bound.height / area_1_bound.height;
-
-//      if (std::fabs(ratio - reference_ratio) < eps)
-//      {
-//        draw_area(threshold_image, area_0, 255);
-//        draw_area(threshold_image, area_1, 255);
-//      }
-//    }
-
-//  for (auto &area_index: symbols_group)
-//    draw_area(threshold_image, areas[area_index], 255);
+  tess_api.SetImage(threshold_image.ptr(),
+                    threshold_image.size().width,
+                    threshold_image.size().height,
+                    threshold_image.elemSize(),
+                    threshold_image.step1());
+  char *text = tess_api.GetUTF8Text();
+  plate_number = text;
+  delete[] text;
 
   cv::imshow("threshold image", threshold_image);
-  cv::imwrite("plate.jpg", threshold_image);
+  cv::imwrite("plate.png", threshold_image);
 
-  return "";
+  return plate_number;
 }

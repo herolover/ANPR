@@ -16,8 +16,8 @@ cv::Rect operator * (const cv::Rect &rect, double k);
 void draw_area(cv::Mat &dst_img, std::vector<cv::Point> &area, int color);
 
 void walk_on_area(cv::Mat &threshold_img, std::vector<cv::Point> &area,
-                  const cv::Point &point);
-std::vector<std::vector<cv::Point> > find_filled_areas(cv::Mat threshold_img);
+                  const cv::Point &point, int pixel_value);
+std::vector<std::vector<cv::Point> > find_filled_areas(cv::Mat threshold_img, int pixel_value);
 
 void adaptive_threshold(const cv::Mat &src_img, cv::Mat &dst_img, double thresh);
 

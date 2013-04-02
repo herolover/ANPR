@@ -71,33 +71,34 @@ void draw_area(cv::Mat &dst_img, std::vector<cv::Point> &area, int color)
 
 
 void walk_on_area(cv::Mat &threshold_img, std::vector<cv::Point> &area,
-                  const cv::Point &point)
+                  const cv::Point &point, int pixel_value)
 {
   if (point.x >= 0 && point.x < threshold_img.cols &&
       point.y >= 0 && point.y < threshold_img.rows &&
-      threshold_img.at<unsigned char>(point) > 0)
+      threshold_img.at<unsigned char>(point) == pixel_value)
   {
-    threshold_img.at<unsigned char>(point) = 0;
+    threshold_img.at<unsigned char>(point) = pixel_value ^ 0xff;
     area.push_back(point);
 
-    walk_on_area(threshold_img, area, point + cv::Point(-1,  0));
-    walk_on_area(threshold_img, area, point + cv::Point( 1,  0));
-    walk_on_area(threshold_img, area, point + cv::Point( 0, -1));
-    walk_on_area(threshold_img, area, point + cv::Point( 0,  1));
+    walk_on_area(threshold_img, area, point + cv::Point(-1,  0), pixel_value);
+    walk_on_area(threshold_img, area, point + cv::Point( 1,  0), pixel_value);
+    walk_on_area(threshold_img, area, point + cv::Point( 0, -1), pixel_value);
+    walk_on_area(threshold_img, area, point + cv::Point( 0,  1), pixel_value);
   }
 }
 
 
-std::vector<std::vector<cv::Point> > find_filled_areas(cv::Mat threshold_img)
+std::vector<std::vector<cv::Point> > find_filled_areas(cv::Mat threshold_img,
+                                                       int pixel_value)
 {
   std::vector<std::vector<cv::Point> > areas;
 
   for (int x = 0; x < threshold_img.cols; ++x)
     for (int y = 0; y < threshold_img.rows; ++y)
-      if (threshold_img.at<unsigned char>(y, x) > 0)
+      if (threshold_img.at<unsigned char>(y, x) == pixel_value)
       {
         std::vector<cv::Point> area;
-        walk_on_area(threshold_img, area, cv::Point(x, y));
+        walk_on_area(threshold_img, area, cv::Point(x, y), pixel_value);
         areas.push_back(area);
       }
 
