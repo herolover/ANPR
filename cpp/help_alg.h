@@ -34,7 +34,7 @@ std::pair<InputIt, InputIt> get_threshold_bound(InputIt first, InputIt last,
                                                 InputIt element, double threshold)
 {
   InputIt left = element - 1;
-  for (; left >= first; --left)
+  for (; left > first; --left)
     if (*left < threshold)
       break;
 
@@ -134,7 +134,7 @@ InputIt find_local_maximum(InputIt first, InputIt last, double threshold,
       ignore_value = true;
 
     for (auto &range: ignored_ranges)
-      if (first > range.first && first < range.second)
+      if (first >= range.first && first < range.second)
       {
         ignore_value = true;
         break;
@@ -158,8 +158,9 @@ std::vector<std::pair<InputIt, InputIt> > find_local_pairs(InputIt first,
                                                            double threshold)
 {
   auto global_maximum = std::max_element(first, last);
-  auto mean = compute_mean(first, last, 0.0);
-  double abs_threshold = (*global_maximum - mean) * threshold + mean;
+  auto global_minimum = std::min_element(first, last);
+//  auto mean = compute_mean(first, last, 0.0);
+  double abs_threshold = (*global_maximum - *global_minimum) * threshold + *global_minimum;
 
   std::vector<std::pair<InputIt, InputIt> > local_pairs;
   std::vector<std::pair<InputIt, InputIt> > ignored_ranges;
@@ -174,7 +175,7 @@ std::vector<std::pair<InputIt, InputIt> > find_local_pairs(InputIt first,
       auto bound = get_threshold_bound(first, last, local_maximum, abs_threshold);
 
       ignored_ranges.push_back(bound);
-      if (bound.first != first && bound.second != last)
+      if (bound.first != local_maximum && bound.second != local_maximum)
         local_pairs.push_back(bound);
     }
     else

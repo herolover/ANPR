@@ -15,23 +15,45 @@
 void ANPR::set_image(const cv::Mat &image)
 {
   this->image_ = image.clone();
+
+  int img_top_offset = this->image_.rows * 1 / 4;
+  int img_bottom_offset = this->image_.rows * 1 / 9;
+  int img_left_offset = this->image_.cols / 8;
+  int img_right_offset = this->image_.cols / 8;
+
+  this->search_rect_.x = img_left_offset;
+  this->search_rect_.y = img_top_offset;
+  this->search_rect_.width = this->image_.cols - img_right_offset - img_left_offset;
+  this->search_rect_.height = this->image_.rows - img_bottom_offset - img_top_offset;
 }
 
 
-void ANPR::run()
+void ANPR::set_image(const cv::Mat &image, const cv::Rect &search_rect)
 {
-  auto rects = this->find_contrast_rects(this->image_, 10);
-  cv::Mat skew_matrix = this->compute_skew_correction_matrix(this->image_(rects[0]));
+  this->image_ = image.clone();
+  this->search_rect_ = search_rect;
+}
+
+
+void ANPR::find_and_recognize()
+{
+  double angle = compute_skew_correction_angle(this->image_(this->search_rect_));
+
+  std::cout << angle * 180.0 / CV_PI << std::endl;
+
+  cv::Mat skew_matrix = cv::Mat::eye(2, 3, CV_64FC1);
+  skew_matrix.at<double>(1, 0) = tan(CV_PI * 0.5 - angle);
+  skew_matrix.at<double>(1, 2) = -(this->search_rect_.x +
+                                   this->search_rect_.width * 0.5) / tan(angle);
 
   cv::Mat deskewed_image;
   cv::warpAffine(this->image_, deskewed_image, skew_matrix, this->image_.size());
 
-  auto correct_rects = this->find_contrast_rects(deskewed_image, 3);
-
-  if (correct_rects.size() > 0)
+  auto rects = this->find_contrast_rects(deskewed_image, 1);
+  if (rects.size() > 0)
   {
-    this->number_plate_image_ = deskewed_image(correct_rects[0]);
-    this->number_plate_text_ = this->recognize_text(this->number_plate_image_);
+    this->number_plate_image_ = deskewed_image(rects[0]);
+    this->recognize_text();
   }
 }
 
@@ -48,63 +70,6 @@ std::string ANPR::get_number_plate_text() const
 }
 
 
-cv::Mat ANPR::compute_edge_image(const cv::Mat &image, ANPR::EdgeType edge_type) const
-{
-  double m[3][3] = {{-1.0, 0.0, 1.0},
-                    {-2.0, 0.0, 2.0},
-                    {-1.0, 0.0, 1.0}};
-  cv::Mat edge_matrix(3, 3, CV_64FC1, m);
-
-  if (edge_type == ET_HORIZONTAL)
-    edge_matrix = edge_matrix.t();
-
-  cv::Mat edge_image;
-  cv::filter2D(image, edge_image, -1, edge_matrix);
-
-  cv::Mat threshold_edge_image;
-  adaptive_threshold(edge_image, threshold_edge_image, 150);
-
-  return threshold_edge_image;
-}
-
-
-cv::Mat ANPR::compute_skew_correction_matrix(const cv::Mat &image) const
-{
-  cv::Mat proc_mage = this->preprocess_image(image);
-  cv::Mat horizontal_edge_image = this->compute_edge_image(proc_mage,
-                                                           ET_HORIZONTAL);
-
-  std::vector<cv::Vec2f> lines;
-  cv::HoughLines(horizontal_edge_image, lines, 1.0, CV_PI / 360.0, 230);
-
-  cv::Mat skew_matrix = cv::Mat::eye(2, 3, CV_64FC1);;
-  if (lines.size() > 0)
-  {
-    double square_sum = 0.0;
-    for (auto &line: lines)
-      square_sum += sqr(line[1]);
-    double rms_angle = sqrt(square_sum / lines.size());
-    skew_matrix.at<double>(1, 0) = tan(CV_PI * 0.5 - rms_angle);
-  }
-
-  return skew_matrix;
-}
-
-
-cv::Mat ANPR::preprocess_image(const cv::Mat &image) const
-{
-  cv::Mat grayscale_image;
-  cv::cvtColor(image, grayscale_image, CV_RGB2GRAY);
-
-  cv::Mat denoised_image;
-  // quite slow function
-//  cv::fastNlMeansDenoising(grayscale_img, denoised_img);
-  denoised_image = grayscale_image;
-
-  return grayscale_image;
-}
-
-
 std::vector<cv::Rect> ANPR::find_contrast_rects(const cv::Mat &image,
                                                 int margin) const
 {
@@ -115,8 +80,11 @@ std::vector<cv::Rect> ANPR::find_contrast_rects(const cv::Mat &image,
   cv::Mat small_image;
   cv::resize(image, small_image, size);
 
-  cv::Mat proc_image = this->preprocess_image(small_image);
-  cv::Mat vertical_edge_image = this->compute_edge_image(proc_image, ET_VERTICAL);
+  cv::Rect search_rect = this->search_rect_ * (1.0 / ratio);
+  cv::Mat cropped_image = small_image(search_rect);
+
+  cv::Mat proc_image = convert_to_grayscale_and_remove_noise(cropped_image);
+  cv::Mat vertical_edge_image = compute_edge_image(proc_image, ET_VERTICAL);
 
   std::vector<double> rows_rms_contrast;
   for (int i = 0; i < vertical_edge_image.rows; ++i)
@@ -126,11 +94,10 @@ std::vector<cv::Rect> ANPR::find_contrast_rects(const cv::Mat &image,
 
   save_to_file("rows", rows_rms_contrast.begin(), rows_rms_contrast.end());
 
-  const int img_top_offset = proc_image.rows * 1 / 4;
-  const int img_bottom_offset = proc_image.rows * 1 / 9;
-  auto rows_rms_contrast_pairs = find_local_pairs(rows_rms_contrast.begin() + img_top_offset,
-                                                  rows_rms_contrast.end() - img_bottom_offset,
-                                                  0.4);
+
+  auto rows_rms_contrast_pairs = find_local_pairs(rows_rms_contrast.begin(),
+                                                  rows_rms_contrast.end(),
+                                                  0.5);
 
   std::vector<cv::Rect> rects;
   for (unsigned i = 0; i < rows_rms_contrast_pairs.size(); ++i)
@@ -140,9 +107,13 @@ std::vector<cv::Rect> ANPR::find_contrast_rects(const cv::Mat &image,
     int bottom_bound = std::distance(rows_rms_contrast.begin(),
                                      rows_rms_contrast_pairs[i].second) + margin;
 
-    cv::Mat both_edge_image = vertical_edge_image +
-                              this->compute_edge_image(proc_image, ET_HORIZONTAL);
+    if (top_bound < 0)
+      top_bound = 0;
+    if (bottom_bound >= (int)rows_rms_contrast.size())
+      bottom_bound = rows_rms_contrast.size();
 
+    cv::Mat both_edge_image = vertical_edge_image +
+                              compute_edge_image(proc_image, ET_HORIZONTAL);
 
     cv::Mat rows_range = both_edge_image.rowRange(top_bound, bottom_bound);
 
@@ -155,11 +126,10 @@ std::vector<cv::Rect> ANPR::find_contrast_rects(const cv::Mat &image,
     save_to_file(boost::str(boost::format("cols_%1%") % i),
                  cols_rms_contrast.begin(), cols_rms_contrast.end());
 
-    const int img_offset_left = proc_image.cols / 8;
-    const int img_offset_right = proc_image.cols / 8;
-    auto cols_rms_contrast_pairs = find_local_pairs(cols_rms_contrast.begin() + img_offset_left,
-                                                    cols_rms_contrast.end() - img_offset_right,
-                                                    0.05);
+
+    auto cols_rms_contrast_pairs = find_local_pairs(cols_rms_contrast.begin(),
+                                                    cols_rms_contrast.end(),
+                                                    0.3);
 
     for (auto &cols_pair: cols_rms_contrast_pairs)
     {
@@ -168,8 +138,8 @@ std::vector<cv::Rect> ANPR::find_contrast_rects(const cv::Mat &image,
 
       cv::Rect rect;
 
-      rect.x = left_bound;
-      rect.y = top_bound;
+      rect.x = left_bound + search_rect.x;
+      rect.y = top_bound + search_rect.y;
       rect.height = bottom_bound - top_bound;
       rect.width = right_bound - left_bound;
 
@@ -181,9 +151,9 @@ std::vector<cv::Rect> ANPR::find_contrast_rects(const cv::Mat &image,
 }
 
 
-std::string ANPR::recognize_text(const cv::Mat &image) const
+void ANPR::recognize_text()
 {
-  cv::Mat proc_image = this->preprocess_image(image);
+  cv::Mat proc_image = convert_to_grayscale_and_remove_noise(this->number_plate_image_);
 
   cv::Mat threshold_image;
   cv::adaptiveThreshold(proc_image, threshold_image, 255.0,
@@ -206,7 +176,7 @@ std::string ANPR::recognize_text(const cv::Mat &image) const
   {
     cv::Rect area_bound = cv::boundingRect(area);
 
-    const double k0 = 1.2;
+    const double k0 = 1.0;
     const double k1 = 0.4;
 
     double ratio = (double)area_bound.width / area_bound.height;
@@ -221,6 +191,8 @@ std::string ANPR::recognize_text(const cv::Mat &image) const
   for (auto &area: areas)
     draw_area(threshold_image, area, 255);
 
+  cv::imshow("threshold_image", threshold_image);
+
   tesseract::TessBaseAPI tess_api;
   tess_api.Init("tessdata", "eng");
   tess_api.SetPageSegMode(tesseract::PSM_SINGLE_LINE);
@@ -232,11 +204,11 @@ std::string ANPR::recognize_text(const cv::Mat &image) const
                     threshold_image.elemSize(),
                     threshold_image.step1());
   char *text = tess_api.GetUTF8Text();
-  plate_number = text;
+  this->number_plate_text_ = text;
   delete[] text;
 
-  cv::imshow("threshold image", threshold_image);
-  cv::imwrite("plate.png", threshold_image);
-
-  return plate_number;
+  this->number_plate_text_.erase(std::remove_if(this->number_plate_text_.begin(),
+                                                this->number_plate_text_.end(),
+                                                isspace),
+                                 this->number_plate_text_.end());
 }

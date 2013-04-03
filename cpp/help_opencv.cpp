@@ -1,5 +1,7 @@
 #include "help_opencv.h"
 
+#include "help_alg.h"
+
 
 double row_RMS(const cv::Mat &row)
 {
@@ -127,4 +129,59 @@ void adaptive_threshold(const cv::Mat &src_img, cv::Mat &dst_img, double thresh)
       if (sum / 9.0 < thresh)
         dst_img.at<unsigned char>(j, i) = 0;
     }
+}
+
+
+double compute_skew_correction_angle(const cv::Mat &image)
+{
+  cv::Mat proc_mage = convert_to_grayscale_and_remove_noise(image);
+  cv::Mat horizontal_edge_image = compute_edge_image(proc_mage, ET_HORIZONTAL);
+
+  std::vector<cv::Vec2f> lines;
+  cv::HoughLines(horizontal_edge_image, lines, 1.0, CV_PI / 360.0, 230);
+
+  double skew_correction_angle = CV_PI * 0.5;
+  if (lines.size() > 0)
+  {
+    double square_sum = 0.0;
+    for (auto &line: lines)
+      square_sum += sqr(line[1]);
+    skew_correction_angle = sqrt(square_sum / lines.size());
+  }
+
+  return skew_correction_angle;
+}
+
+
+cv::Mat convert_to_grayscale_and_remove_noise(const cv::Mat &image)
+{
+  cv::Mat grayscale_image;
+  cv::cvtColor(image, grayscale_image, CV_RGB2GRAY);
+
+  cv::Mat denoised_image;
+  // quite slow function
+//  cv::fastNlMeansDenoising(grayscale_image, denoised_image);
+  denoised_image = grayscale_image;
+
+  return grayscale_image;
+}
+
+
+cv::Mat compute_edge_image(const cv::Mat &image, EdgeType edge_type)
+{
+  double m[3][3] = {{-1.0, 0.0, 1.0},
+                    {-3.0, 0.0, 3.0},
+                    {-1.0, 0.0, 1.0}};
+  cv::Mat edge_matrix(3, 3, CV_64FC1, m);
+
+  if (edge_type == ET_HORIZONTAL)
+    edge_matrix = edge_matrix.t();
+
+  cv::Mat edge_image;
+  cv::filter2D(image, edge_image, -1, edge_matrix);
+
+  cv::Mat threshold_edge_image;
+  adaptive_threshold(edge_image, threshold_edge_image, 150);
+
+  return threshold_edge_image;
 }
