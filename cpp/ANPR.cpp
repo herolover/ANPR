@@ -3,6 +3,8 @@
 #include <string>
 
 #include <boost/format.hpp>
+#include <boost/regex.hpp>
+
 #include <tesseract/baseapi.h>
 
 #include "help_alg.h"
@@ -38,8 +40,6 @@ void ANPR::set_image(const cv::Mat &image, const cv::Rect &search_rect)
 void ANPR::find_and_recognize()
 {
   double angle = compute_skew_correction_angle(this->image_(this->search_rect_));
-
-  std::cout << angle * 180.0 / CV_PI << std::endl;
 
   cv::Mat skew_matrix = cv::Mat::eye(2, 3, CV_64FC1);
   skew_matrix.at<double>(1, 0) = tan(CV_PI * 0.5 - angle);
@@ -176,7 +176,7 @@ void ANPR::recognize_text()
   {
     cv::Rect area_bound = cv::boundingRect(area);
 
-    const double k0 = 1.0;
+    const double k0 = 1.1;
     const double k1 = 0.4;
 
     double ratio = (double)area_bound.width / area_bound.height;
@@ -211,4 +211,19 @@ void ANPR::recognize_text()
                                                 this->number_plate_text_.end(),
                                                 isspace),
                                  this->number_plate_text_.end());
+
+
+  boost::match_results<std::string::iterator> what;
+  if (boost::regex_search(this->number_plate_text_.begin(),
+                          this->number_plate_text_.end(),
+                          what,
+                          boost::regex("[ABCEHKMOPTXY0][[:digit:]]{3}[ABCEHKMOPTXY0]{2}[[:digit:]]{2,3}")))
+  {
+    int zero_test_indexes[] = {0, 4, 5};
+    for (auto index: zero_test_indexes)
+      if (*(what[0].first + index) == '0')
+        *(what[0].first + index) = 'O';
+
+    this->number_plate_text_ = std::string(what[0].first, what[0].second);
+  }
 }
