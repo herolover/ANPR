@@ -29,28 +29,25 @@ std::vector<T> compute_derivative(const std::vector<T> &values, int window_size,
 }
 
 
-template<class InputIt>
-std::pair<InputIt, InputIt> get_threshold_bound(InputIt first, InputIt last,
-                                                InputIt element, double threshold)
-{
-  InputIt left = element - 1;
-  for (; left > first; --left)
-    if (*left < threshold)
-      break;
-
-  InputIt right = element + 1;
-  for (; right < last; ++right)
-    if (*right < threshold)
-      break;
-
-  return std::make_pair(left, right);
-}
-
-
 template<class InputIt, class T> inline
 T compute_mean(InputIt first, InputIt last, T init)
 {
   return std::accumulate(first, last, init) / std::distance(first, last);
+}
+
+
+template<class InputIt, class T> inline
+T compute_median(InputIt first, InputIt last, T init)
+{
+  std::vector<T> values(first, last);
+
+  std::sort(values.begin(), values.end());
+
+  if (values.size() % 2)
+    return compute_mean(values.begin() + values.size() / 2 - 1,
+                        values.begin() + values.size() / 2, init);
+  else
+    return values[values.size() / 2];
 }
 
 
@@ -120,6 +117,21 @@ std::vector<T> exp_smooth(const std::vector<T> &values, double alpha)
 }
 
 
+template<class T>
+std::vector<T> median_smooth(const std::vector<T> &values, unsigned window_size,
+                             T init)
+{
+  std::vector<T> smoothed_values;
+  for (auto element = values.begin(); element != values.end(); ++element)
+  {
+    auto window = get_window_elements(values, window_size, element);
+    smoothed_values.push_back(compute_median(window.first, window.second, init));
+  }
+
+  return smoothed_values;
+}
+
+
 template<class InputIt>
 InputIt find_local_maximum(InputIt first, InputIt last, double threshold,
                            const std::vector<std::pair<InputIt, InputIt>> &ignored_ranges)
@@ -149,6 +161,24 @@ InputIt find_local_maximum(InputIt first, InputIt last, double threshold,
   }
 
   return local_maximum;
+}
+
+
+template<class InputIt>
+std::pair<InputIt, InputIt> get_threshold_bound(InputIt first, InputIt last,
+                                                InputIt element, double threshold)
+{
+  InputIt left = element;
+  for (; left > first; --left)
+    if (*left < threshold)
+      break;
+
+  InputIt right = element;
+  for (; right < last; ++right)
+    if (*right < threshold)
+      break;
+
+  return std::make_pair(left, right);
 }
 
 

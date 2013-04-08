@@ -49,12 +49,9 @@ void ANPR::find_and_recognize()
   cv::Mat deskewed_image;
   cv::warpAffine(this->image_, deskewed_image, skew_matrix, this->image_.size());
 
-  auto rects = this->find_contrast_rects(deskewed_image, 1);
-  if (rects.size() > 0)
-  {
-    this->number_plate_image_ = deskewed_image(rects[0]);
-    this->recognize_text();
-  }
+  auto rect = this->find_number_plate_rect(deskewed_image);
+  this->number_plate_image_ = deskewed_image(rect);
+  this->recognize_text();
 }
 
 
@@ -70,84 +67,86 @@ std::string ANPR::get_number_plate_text() const
 }
 
 
-std::vector<cv::Rect> ANPR::find_contrast_rects(const cv::Mat &image,
-                                                int margin) const
+cv::Rect ANPR::find_number_plate_rect(const cv::Mat &image) const
 {
-  int width = 640;
-  double ratio = (double)image.cols / width;
-  cv::Size2f size(width, image.rows / ratio);
-
-  cv::Mat small_image;
-  cv::resize(image, small_image, size);
-
-  cv::Rect search_rect = this->search_rect_ * (1.0 / ratio);
-  cv::Mat cropped_image = small_image(search_rect);
+  cv::Mat cropped_image = image(this->search_rect_);
 
   cv::Mat proc_image = convert_to_grayscale_and_remove_noise(cropped_image);
   cv::Mat vertical_edge_image = compute_edge_image(proc_image, ET_VERTICAL);
 
+//  cv::imshow("vertical_edge_image", vertical_edge_image);
+
   std::vector<double> rows_rms_contrast;
   for (int i = 0; i < vertical_edge_image.rows; ++i)
-    rows_rms_contrast.push_back(row_RMS(vertical_edge_image.row(i)));
+    rows_rms_contrast.push_back(vec_RMS(vertical_edge_image.row(i)));
 
-  rows_rms_contrast = simple_moving_average(rows_rms_contrast, 10, 0.0);
+  rows_rms_contrast = median_smooth(rows_rms_contrast, 5, 0.0);
 
-  save_to_file("rows", rows_rms_contrast.begin(), rows_rms_contrast.end());
+//  save_to_file("rows", rows_rms_contrast.begin(), rows_rms_contrast.end());
 
 
   auto rows_rms_contrast_pairs = find_local_pairs(rows_rms_contrast.begin(),
                                                   rows_rms_contrast.end(),
-                                                  0.5);
-
-  std::vector<cv::Rect> rects;
-  for (unsigned i = 0; i < rows_rms_contrast_pairs.size(); ++i)
+                                                  0.3);
+  auto wided_pair = *std::max_element(rows_rms_contrast_pairs.begin(),
+                                      rows_rms_contrast_pairs.end(),
+                                      [](const std::pair<std::vector<double>::iterator,
+                                                         std::vector<double>::iterator> &a,
+                                         const std::pair<std::vector<double>::iterator,
+                                                         std::vector<double>::iterator> &b)
   {
-    int top_bound = std::distance(rows_rms_contrast.begin(),
-                                  rows_rms_contrast_pairs[i].first) - margin;
-    int bottom_bound = std::distance(rows_rms_contrast.begin(),
-                                     rows_rms_contrast_pairs[i].second) + margin;
-
-    if (top_bound < 0)
-      top_bound = 0;
-    if (bottom_bound >= (int)rows_rms_contrast.size())
-      bottom_bound = rows_rms_contrast.size();
-
-    cv::Mat both_edge_image = vertical_edge_image +
-                              compute_edge_image(proc_image, ET_HORIZONTAL);
-
-    cv::Mat rows_range = both_edge_image.rowRange(top_bound, bottom_bound);
-
-    std::vector<double> cols_rms_contrast;
-    for (int j = 0; j < rows_range.cols; ++j)
-      cols_rms_contrast.push_back(col_RMS(rows_range.col(j)));
-
-    cols_rms_contrast = simple_moving_average(cols_rms_contrast, 30, 0.0);
-
-    save_to_file(boost::str(boost::format("cols_%1%") % i),
-                 cols_rms_contrast.begin(), cols_rms_contrast.end());
+    return std::distance(a.first, a.second) < std::distance(b.first, b.second);
+  });
 
 
-    auto cols_rms_contrast_pairs = find_local_pairs(cols_rms_contrast.begin(),
-                                                    cols_rms_contrast.end(),
-                                                    0.3);
 
-    for (auto &cols_pair: cols_rms_contrast_pairs)
-    {
-      int left_bound = std::distance(cols_rms_contrast.begin(), cols_pair.first) - margin;
-      int right_bound = std::distance(cols_rms_contrast.begin(), cols_pair.second) + margin;
+  int top_bound = std::distance(rows_rms_contrast.begin(),
+                                wided_pair.first);
+  int bottom_bound = std::distance(rows_rms_contrast.begin(),
+                                   wided_pair.second);
 
-      cv::Rect rect;
+  cv::Mat both_edge_image = vertical_edge_image +
+                            compute_edge_image(proc_image, ET_HORIZONTAL);
 
-      rect.x = left_bound + search_rect.x;
-      rect.y = top_bound + search_rect.y;
-      rect.height = bottom_bound - top_bound;
-      rect.width = right_bound - left_bound;
+//  cv::imshow("both_edge_image", both_edge_image);
 
-      rects.push_back(rect * ratio);
-    }
-  }
+  cv::Mat rows_range = both_edge_image.rowRange(top_bound, bottom_bound);
 
-  return rects;
+  std::vector<double> cols_rms_contrast;
+  for (int j = 0; j < rows_range.cols; ++j)
+    cols_rms_contrast.push_back(vec_RMS(rows_range.col(j)));
+
+//  save_to_file("cols", cols_rms_contrast.begin(), cols_rms_contrast.end());
+
+  cols_rms_contrast = simple_moving_average(cols_rms_contrast, 60, 0.0);
+
+//  save_to_file("cols_s", cols_rms_contrast.begin(), cols_rms_contrast.end());
+
+  auto cols_rms_contrast_pairs = find_local_pairs(cols_rms_contrast.begin(),
+                                                  cols_rms_contrast.end(),
+                                                  0.03);
+
+  std::sort(cols_rms_contrast_pairs.begin(), cols_rms_contrast_pairs.end(),
+            [](const std::pair<std::vector<double>::iterator,
+                               std::vector<double>::iterator> &a,
+               const std::pair<std::vector<double>::iterator,
+                               std::vector<double>::iterator> &b)
+  {
+    return std::distance(a.first, a.second) > std::distance(b.first, b.second);
+  });
+
+  int left_bound = std::distance(cols_rms_contrast.begin(),
+                                 cols_rms_contrast_pairs.front().first);
+  int right_bound = std::distance(cols_rms_contrast.begin(),
+                                  cols_rms_contrast_pairs.front().second);
+
+  cv::Rect rect;
+  rect.x = left_bound + this->search_rect_.x;
+  rect.y = top_bound + this->search_rect_.y;
+  rect.height = bottom_bound - top_bound;
+  rect.width = right_bound - left_bound;
+
+  return rect;
 }
 
 
@@ -155,17 +154,26 @@ void ANPR::recognize_text()
 {
   cv::Mat proc_image = convert_to_grayscale_and_remove_noise(this->number_plate_image_);
 
-  cv::Mat threshold_image;
-  cv::adaptiveThreshold(proc_image, threshold_image, 255.0,
-                        CV_ADAPTIVE_THRESH_GAUSSIAN_C, CV_THRESH_BINARY_INV,
-                        151, 0.0);
+//  cv::imshow("proc_image", proc_image);
 
+  cv::Mat blured_image;
+  cv::GaussianBlur(proc_image, blured_image, cv::Size(101, 101), 0);
+
+  cv::Mat equalized_image;
+  cv::divide(proc_image, blured_image, equalized_image, 256.0);
+
+//  cv::imshow("equalized_image", equalized_image);
+
+  cv::Mat threshold_image;
+  cv::threshold(equalized_image, threshold_image, 210.0, 255.0, CV_THRESH_BINARY_INV);
 
   // fill a small noise on a characters
   std::vector<std::vector<cv::Point> > noisy_areas = find_filled_areas(threshold_image.clone(), 0);
   for (auto &area: noisy_areas)
     if (area.size() < 60)
       draw_area(threshold_image, area, 255);
+
+//  cv::imshow("threshold_image_prev", threshold_image);
 
 
   std::vector<std::vector<cv::Point> > areas = find_filled_areas(threshold_image.clone(), 255);
@@ -191,7 +199,7 @@ void ANPR::recognize_text()
   for (auto &area: areas)
     draw_area(threshold_image, area, 255);
 
-  cv::imshow("threshold_image", threshold_image);
+//  cv::imshow("threshold_image", threshold_image);
 
   tesseract::TessBaseAPI tess_api;
   tess_api.Init("tessdata", "eng");

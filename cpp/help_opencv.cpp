@@ -3,51 +3,21 @@
 #include "help_alg.h"
 
 
-double row_RMS(const cv::Mat &row)
+double vec_RMS(const cv::Mat &vec)
 {
   double square_sum = 0.0;
-  for (int i = 0; i < row.cols; ++i)
-  {
-    double value = row.at<unsigned char>(0, i) / 255.0;
-    square_sum += (double)value * value;
-  }
+  for (unsigned i = 0; i < vec.total(); ++i)
+    square_sum += sqr(vec.at<unsigned char>(i) / 255.0);
 
-  return sqrt(square_sum / row.cols);
+  return sqrt(square_sum / vec.cols);
 }
 
-double col_RMS(const cv::Mat &col)
-{
-  double square_sum = 0.0;
-  for (int i = 0; i < col.rows; ++i)
-  {
-    double value = col.at<unsigned char>(i, 0) / 255.0;
-    square_sum += (double)value * value;
-  }
 
-  return sqrt(square_sum / col.rows);
-}
-
-double row_sum(const cv::Mat &row)
+double vec_sum(const cv::Mat &vec)
 {
   double sum = 0.0;
-  for (int i = 0; i < row.cols; ++i)
-  {
-    double value = row.at<unsigned char>(0, i) / 255.0;
-    sum += value;
-  }
-
-  return sum;
-}
-
-
-double col_sum(const cv::Mat &col)
-{
-  double sum = 0.0;
-  for (int i = 0; i < col.rows; ++i)
-  {
-    double value = col.at<unsigned char>(i, 0) / 255.0;
-    sum += value;
-  }
+  for (unsigned i = 0; i < vec.total(); ++i)
+    sum += vec.at<unsigned char>(i) / 255.0;
 
   return sum;
 }
@@ -138,7 +108,7 @@ double compute_skew_correction_angle(const cv::Mat &image)
   cv::Mat horizontal_edge_image = compute_edge_image(proc_mage, ET_HORIZONTAL);
 
   std::vector<cv::Vec2f> lines;
-  cv::HoughLines(horizontal_edge_image, lines, 1.0, CV_PI / 360.0, 230);
+  cv::HoughLines(horizontal_edge_image, lines, 1.0, CV_PI / 360.0, 300);
 
   double skew_correction_angle = CV_PI * 0.5;
   if (lines.size() > 0)
@@ -159,29 +129,32 @@ cv::Mat convert_to_grayscale_and_remove_noise(const cv::Mat &image)
   cv::cvtColor(image, grayscale_image, CV_RGB2GRAY);
 
   cv::Mat denoised_image;
-  // quite slow function
-//  cv::fastNlMeansDenoising(grayscale_image, denoised_image);
-  denoised_image = grayscale_image;
+  cv::medianBlur(grayscale_image, denoised_image, 5);
 
-  return grayscale_image;
+  return denoised_image;
 }
 
 
 cv::Mat compute_edge_image(const cv::Mat &image, EdgeType edge_type)
 {
-  double m[3][3] = {{-1.0, 0.0, 1.0},
-                    {-3.0, 0.0, 3.0},
-                    {-1.0, 0.0, 1.0}};
-  cv::Mat edge_matrix(3, 3, CV_64FC1, m);
+  double m[3][5] = {{-0.5, -1.0, 0.0, 1.0, 0.5},
+                    {-1.0, -2.0, 0.0, 2.0, 1.0},
+                    {-0.5, -1.0, 0.0, 1.0, 0.5}};
+  cv::Mat edge_matrix(3, 5, CV_64FC1, m);
 
   if (edge_type == ET_HORIZONTAL)
     edge_matrix = edge_matrix.t();
 
-  cv::Mat edge_image;
-  cv::filter2D(image, edge_image, -1, edge_matrix);
+  cv::Mat edge_image_plus;
+  cv::filter2D(image, edge_image_plus, -1, edge_matrix);
+
+  cv::Mat edge_image_minus;
+  cv::filter2D(image, edge_image_minus, -1, -edge_matrix);
+
+  cv::Mat edge_image = edge_image_plus + edge_image_minus;
 
   cv::Mat threshold_edge_image;
-  adaptive_threshold(edge_image, threshold_edge_image, 150);
+  adaptive_threshold(edge_image, threshold_edge_image, 200);
 
   return threshold_edge_image;
 }

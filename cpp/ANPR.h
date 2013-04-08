@@ -19,7 +19,7 @@ public:
   std::string get_number_plate_text() const;
 
 private:
-  std::vector<cv::Rect> find_contrast_rects(const cv::Mat &image, int margin) const;
+  cv::Rect find_number_plate_rect(const cv::Mat &image) const;
   void recognize_text();
 
 
