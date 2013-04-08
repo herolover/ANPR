@@ -154,7 +154,7 @@ void ANPR::recognize_text()
 {
   cv::Mat proc_image = convert_to_grayscale_and_remove_noise(this->number_plate_image_);
 
-//  cv::imshow("proc_image", proc_image);
+  cv::imshow("proc_image", proc_image);
 
   cv::Mat blured_image;
   cv::GaussianBlur(proc_image, blured_image, cv::Size(101, 101), 0);
@@ -162,7 +162,7 @@ void ANPR::recognize_text()
   cv::Mat equalized_image;
   cv::divide(proc_image, blured_image, equalized_image, 256.0);
 
-//  cv::imshow("equalized_image", equalized_image);
+  cv::imshow("equalized_image", equalized_image);
 
   cv::Mat threshold_image;
   cv::threshold(equalized_image, threshold_image, 210.0, 255.0, CV_THRESH_BINARY_INV);
@@ -170,10 +170,10 @@ void ANPR::recognize_text()
   // fill a small noise on a characters
   std::vector<std::vector<cv::Point> > noisy_areas = find_filled_areas(threshold_image.clone(), 0);
   for (auto &area: noisy_areas)
-    if (area.size() < 60)
+    if ((double)area.size() / threshold_image.total() < 0.002)
       draw_area(threshold_image, area, 255);
 
-//  cv::imshow("threshold_image_prev", threshold_image);
+  cv::imshow("threshold_image_prev", threshold_image);
 
 
   std::vector<std::vector<cv::Point> > areas = find_filled_areas(threshold_image.clone(), 255);
@@ -185,7 +185,7 @@ void ANPR::recognize_text()
     cv::Rect area_bound = cv::boundingRect(area);
 
     const double k0 = 1.1;
-    const double k1 = 0.4;
+    const double k1 = 0.3;
 
     double ratio = (double)area_bound.width / area_bound.height;
 
@@ -199,7 +199,7 @@ void ANPR::recognize_text()
   for (auto &area: areas)
     draw_area(threshold_image, area, 255);
 
-//  cv::imshow("threshold_image", threshold_image);
+  cv::imshow("threshold_image", threshold_image);
 
   tesseract::TessBaseAPI tess_api;
   tess_api.Init("tessdata", "eng");
