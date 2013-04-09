@@ -6,28 +6,11 @@
 
 #include <opencv2/opencv.hpp>
 
-
-class ANPR
+namespace ANPR
 {
-public:
-  void set_image(const cv::Mat &image);
-  void set_image(const cv::Mat &image, const cv::Rect &search_rect);
-
-  void find_and_recognize();
-
-  cv::Mat get_number_plate_image() const;
-  std::string get_number_plate_text() const;
-
-private:
-  cv::Rect find_number_plate_rect(const cv::Mat &image) const;
-  void recognize_text();
-
-
-  cv::Rect search_rect_;
-  cv::Mat image_;
-  std::string number_plate_text_;
-  cv::Mat number_plate_image_;
-};
+  std::string find_and_recognize_number_plate(const cv::Mat &image,
+                                              const cv::Rect &search_rect);
+}
 
 
 #endif // ANPR_H

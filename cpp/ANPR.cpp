@@ -11,64 +11,10 @@
 #include "help_opencv.h"
 
 
-#include <stdio.h>
-
-
-void ANPR::set_image(const cv::Mat &image)
+cv::Rect find_number_plate_rect(const cv::Mat &image,
+                                const cv::Rect &search_rect)
 {
-  this->image_ = image.clone();
-
-  int img_top_offset = this->image_.rows * 1 / 4;
-  int img_bottom_offset = this->image_.rows * 1 / 9;
-  int img_left_offset = this->image_.cols / 8;
-  int img_right_offset = this->image_.cols / 8;
-
-  this->search_rect_.x = img_left_offset;
-  this->search_rect_.y = img_top_offset;
-  this->search_rect_.width = this->image_.cols - img_right_offset - img_left_offset;
-  this->search_rect_.height = this->image_.rows - img_bottom_offset - img_top_offset;
-}
-
-
-void ANPR::set_image(const cv::Mat &image, const cv::Rect &search_rect)
-{
-  this->image_ = image.clone();
-  this->search_rect_ = search_rect;
-}
-
-
-void ANPR::find_and_recognize()
-{
-  cv::Mat proc_mage = convert_to_grayscale_and_remove_noise(this->image_(this->search_rect_));
-  double angle = compute_skew_correction_angle(proc_mage);
-
-  cv::Mat skew_matrix = make_skew_matrix(angle, this->search_rect_.x +
-                                                this->search_rect_.width * 0.5);
-
-  cv::Mat deskewed_image;
-  cv::warpAffine(this->image_, deskewed_image, skew_matrix, this->image_.size());
-
-  auto rect = this->find_number_plate_rect(deskewed_image);
-  this->number_plate_image_ = deskewed_image(rect);
-  this->recognize_text();
-}
-
-
-cv::Mat ANPR::get_number_plate_image() const
-{
-  return this->number_plate_image_;
-}
-
-
-std::string ANPR::get_number_plate_text() const
-{
-  return this->number_plate_text_;
-}
-
-
-cv::Rect ANPR::find_number_plate_rect(const cv::Mat &image) const
-{
-  cv::Mat cropped_image = image(this->search_rect_);
+  cv::Mat cropped_image = image(search_rect);
 
   cv::Mat proc_image = convert_to_grayscale_and_remove_noise(cropped_image);
   cv::Mat vertical_edge_image = compute_edge_image(proc_image, ET_VERTICAL);
@@ -140,8 +86,8 @@ cv::Rect ANPR::find_number_plate_rect(const cv::Mat &image) const
                                   cols_rms_contrast_pairs.front().second);
 
   cv::Rect rect;
-  rect.x = left_bound + this->search_rect_.x;
-  rect.y = top_bound + this->search_rect_.y;
+  rect.x = left_bound + search_rect.x;
+  rect.y = top_bound + search_rect.y;
   rect.height = bottom_bound - top_bound;
   rect.width = right_bound - left_bound;
 
@@ -149,9 +95,9 @@ cv::Rect ANPR::find_number_plate_rect(const cv::Mat &image) const
 }
 
 
-void ANPR::recognize_text()
+std::string recognize_number_plate(const cv::Mat &number_plate_image)
 {
-  cv::Mat proc_image = convert_to_grayscale_and_remove_noise(this->number_plate_image_);
+  cv::Mat proc_image = convert_to_grayscale_and_remove_noise(number_plate_image);
 
   cv::imshow("proc_image", proc_image);
 
@@ -211,18 +157,18 @@ void ANPR::recognize_text()
                     threshold_image.elemSize(),
                     threshold_image.step1());
   char *text = tess_api.GetUTF8Text();
-  this->number_plate_text_ = text;
+  std::string number_plate_text = text;
   delete[] text;
 
-  this->number_plate_text_.erase(std::remove_if(this->number_plate_text_.begin(),
-                                                this->number_plate_text_.end(),
-                                                isspace),
-                                 this->number_plate_text_.end());
+  number_plate_text.erase(std::remove_if(number_plate_text.begin(),
+                                         number_plate_text.end(),
+                                         isspace),
+                          number_plate_text.end());
 
 
   boost::match_results<std::string::iterator> what;
-  if (boost::regex_search(this->number_plate_text_.begin(),
-                          this->number_plate_text_.end(),
+  if (boost::regex_search(number_plate_text.begin(),
+                          number_plate_text.end(),
                           what,
                           boost::regex("[ABCEHKMOPTXY0][[:digit:]]{3}[ABCEHKMOPTXY0]{2}[[:digit:]]{2,3}")))
   {
@@ -231,6 +177,26 @@ void ANPR::recognize_text()
       if (*(what[0].first + index) == '0')
         *(what[0].first + index) = 'O';
 
-    this->number_plate_text_ = std::string(what[0].first, what[0].second);
+    number_plate_text = std::string(what[0].first, what[0].second);
   }
+
+  return number_plate_text;
+}
+
+
+std::string ANPR::find_and_recognize_number_plate(const cv::Mat &image,
+                                                  const cv::Rect &search_rect)
+{
+  cv::Mat proc_mage = convert_to_grayscale_and_remove_noise(image(search_rect));
+  double angle = compute_skew_correction_angle(proc_mage);
+
+  cv::Mat skew_matrix = make_skew_matrix(angle, search_rect.x +
+                                                search_rect.width * 0.5);
+
+  cv::Mat deskewed_image;
+  cv::warpAffine(image, deskewed_image, skew_matrix, image.size());
+
+  cv::Rect rect = find_number_plate_rect(deskewed_image, search_rect);
+
+  return recognize_number_plate(deskewed_image(rect));
 }
