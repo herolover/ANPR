@@ -39,12 +39,11 @@ void ANPR::set_image(const cv::Mat &image, const cv::Rect &search_rect)
 
 void ANPR::find_and_recognize()
 {
-  double angle = compute_skew_correction_angle(this->image_(this->search_rect_));
+  cv::Mat proc_mage = convert_to_grayscale_and_remove_noise(this->image_(this->search_rect_));
+  double angle = compute_skew_correction_angle(proc_mage);
 
-  cv::Mat skew_matrix = cv::Mat::eye(2, 3, CV_64FC1);
-  skew_matrix.at<double>(1, 0) = tan(CV_PI * 0.5 - angle);
-  skew_matrix.at<double>(1, 2) = -(this->search_rect_.x +
-                                   this->search_rect_.width * 0.5) / tan(angle);
+  cv::Mat skew_matrix = make_skew_matrix(angle, this->search_rect_.x +
+                                                this->search_rect_.width * 0.5);
 
   cv::Mat deskewed_image;
   cv::warpAffine(this->image_, deskewed_image, skew_matrix, this->image_.size());

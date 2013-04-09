@@ -104,8 +104,7 @@ void adaptive_threshold(const cv::Mat &src_img, cv::Mat &dst_img, double thresh)
 
 double compute_skew_correction_angle(const cv::Mat &image)
 {
-  cv::Mat proc_mage = convert_to_grayscale_and_remove_noise(image);
-  cv::Mat horizontal_edge_image = compute_edge_image(proc_mage, ET_HORIZONTAL);
+  cv::Mat horizontal_edge_image = compute_edge_image(image, ET_HORIZONTAL);
 
   std::vector<cv::Vec2f> lines;
   cv::HoughLines(horizontal_edge_image, lines, 1.0, CV_PI / 360.0, 300);
@@ -157,4 +156,14 @@ cv::Mat compute_edge_image(const cv::Mat &image, EdgeType edge_type)
   adaptive_threshold(edge_image, threshold_edge_image, 200);
 
   return threshold_edge_image;
+}
+
+
+cv::Mat make_skew_matrix(double angle, double skew_center)
+{
+  cv::Mat skew_matrix = cv::Mat::eye(2, 3, CV_64FC1);
+  skew_matrix.at<double>(1, 0) = tan(CV_PI * 0.5 - angle);
+  skew_matrix.at<double>(1, 2) = -skew_center / tan(angle);
+
+  return skew_matrix;
 }

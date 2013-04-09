@@ -18,6 +18,7 @@ std::vector<std::vector<cv::Point> > find_filled_areas(cv::Mat threshold_img, in
 void adaptive_threshold(const cv::Mat &src_img, cv::Mat &dst_img, double thresh);
 
 double compute_skew_correction_angle(const cv::Mat &image);
+cv::Mat make_skew_matrix(double angle, double skew_center);
 
 cv::Mat convert_to_grayscale_and_remove_noise(const cv::Mat &image);
 
