@@ -10,6 +10,7 @@
 #include <boost/format.hpp>
 
 #include "ANPR.h"
+#include "place_number_recognizer.h"
 #include "help_opencv.h"
 
 
@@ -128,16 +129,5 @@ void load_image()
 
 void process()
 {
-  ANPR anpr;
-  anpr.set_image(image, search_rect * (1.0 / ratio));
-
-  anpr.find_and_recognize();
-
-  cv::Mat number_plate_image = anpr.get_number_plate_image();
-
-  if (!number_plate_image.empty())
-  {
-    std::cout << "Text: " << anpr.get_number_plate_text() << std::endl;
-    cv::imshow("number plate image", number_plate_image);
-  }
+  std::cout << ANPR::recognize_number_plate(image(search_rect * (1.0 / ratio))) << std::endl;
 }
