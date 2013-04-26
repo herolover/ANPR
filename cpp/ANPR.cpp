@@ -18,7 +18,7 @@ std::string ANPR::recognize_number_plate(const cv::Mat &number_plate_image)
 //  cv::imshow("proc_image", proc_image);
 
   cv::Mat blured_image;
-  cv::GaussianBlur(proc_image, blured_image, cv::Size(101, 101), 0);
+  cv::GaussianBlur(proc_image, blured_image, cv::Size(51, 51), 0);
 
   cv::Mat equalized_image;
   cv::divide(proc_image, blured_image, equalized_image, 256.0);
@@ -26,7 +26,7 @@ std::string ANPR::recognize_number_plate(const cv::Mat &number_plate_image)
 //  cv::imshow("equalized_image", equalized_image);
 
   cv::Mat threshold_image;
-  cv::threshold(equalized_image, threshold_image, 210.0, 255.0, CV_THRESH_BINARY_INV);
+  cv::threshold(equalized_image, threshold_image, 220.0, 255.0, CV_THRESH_BINARY_INV);
 
 //  cv::imshow("threshold_image_prev", threshold_image);
 
@@ -52,15 +52,13 @@ std::string ANPR::recognize_number_plate(const cv::Mat &number_plate_image)
   }), areas.end());
 
   int max_height = 0;
-  int min_height = std::numeric_limits<int>::max();
   for (auto &area: areas) {
     cv::Rect area_bound = cv::boundingRect(area);
     max_height = std::max(max_height, area_bound.height);
-    min_height = std::min(min_height, area_bound.height);
   }
 
   double height_threshold_coef = 0.5;
-  int height_threshold = (int)((max_height - min_height) * height_threshold_coef) + min_height;
+  int height_threshold = (int)(max_height * height_threshold_coef);
   areas.erase(std::remove_if(areas.begin(), areas.end(),
                              [height_threshold](const std::vector<cv::Point> &area)
   {

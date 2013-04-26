@@ -5,7 +5,7 @@ source_dirs  := .
 include_dirs := .
 link_flags   := -lopencv_highgui -lopencv_core -lopencv_imgproc -lopencv_photo -lrt -lboost_system -lboost_filesystem -lboost_regex -ltesseract
 lib_dirs     := .
-compiler_flags :=  -Wall -std=c++11 -O3
+compiler_flags :=  -Wall -std=c++11 -g -pg -O3
 
 output_path := ./out/
 

@@ -21,7 +21,7 @@ void load_image();
 void process();
 
 
-const std::string folder = "../../test_img/my/";
+const std::string folder = "../../test_img/my_new/";
 
 boost::filesystem::path path(folder);
 int max_image_index = std::distance(boost::filesystem::directory_iterator(path),

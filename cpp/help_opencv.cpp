@@ -128,7 +128,7 @@ cv::Mat convert_to_grayscale_and_remove_noise(const cv::Mat &image)
   cv::cvtColor(image, grayscale_image, CV_RGB2GRAY);
 
   cv::Mat denoised_image;
-  cv::medianBlur(grayscale_image, denoised_image, 5);
+  cv::medianBlur(grayscale_image, denoised_image, 3);
 
   return denoised_image;
 }
