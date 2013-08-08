@@ -7,24 +7,24 @@
 #include <tesseract/baseapi.h>
 
 
-void PlaceNumberRecognizer::find_and_recognize()
+std::string recognize_place_number(const cv::Mat &image, const Color &color)
 {
   double ratio = 0.3;
   cv::Mat small_image;
-  cv::resize(this->image_, small_image, cv::Size(), ratio, ratio);
+  cv::resize(image, small_image, cv::Size(), ratio, ratio);
 
   cv::Mat blured_image;
   cv::medianBlur(small_image, blured_image, 5);
 
   Color nearest_color = *std::min_element(blured_image.begin<Color>(),
                                           blured_image.end<Color>(),
-                                          [this](const Color &a, const Color &b)
+                                          [&color](const Color &a, const Color &b)
   {
     Color diff_a;
-    cv::absdiff(a, this->color_, diff_a);
+    cv::absdiff(a, color, diff_a);
 
     Color diff_b;
-    cv::absdiff(b, this->color_, diff_b);
+    cv::absdiff(b, color, diff_b);
 
     return cv::norm(diff_a) < cv::norm(diff_b);
   });
@@ -89,13 +89,13 @@ void PlaceNumberRecognizer::find_and_recognize()
     double angle = compute_skew_correction_angle(threshold_image(area_bound));
     cv::Mat skew_matrix = make_skew_matrix(angle, area_bound.width * 0.5);
 
-    cv::Mat area_image = this->image_(area_bound * (1.0 / ratio));
+    cv::Mat area_image = image(area_bound * (1.0 / ratio));
 
     cv::Mat blured_area;
     cv::medianBlur(area_image, blured_area, 5);
 
     cv::Mat deskewed_area;
-    cv::warpAffine(area_image, deskewed_area, skew_matrix, this->image_.size());
+    cv::warpAffine(area_image, deskewed_area, skew_matrix, image.size());
 
     cv::Mat grayscale_area;
     cv::cvtColor(deskewed_area, grayscale_area, CV_RGB2GRAY);
@@ -116,28 +116,18 @@ void PlaceNumberRecognizer::find_and_recognize()
                       threshold_area.elemSize(),
                       threshold_area.step1());
     char *text = tess_api.GetUTF8Text();
-    this->place_number_ = text;
+    std::string place_number = text;
     delete[] text;
 
-    this->place_number_.erase(std::remove_if(this->place_number_.begin(),
-                                             this->place_number_.end(),
-                                             [](int char_value)
+    place_number.erase(std::remove_if(place_number.begin(),
+                                      place_number.end(),
+                                      [](int char_value)
     {
       return !isdigit(char_value);
-    }), this->place_number_.end());
+    }), place_number.end());
 
-    std::cout << "Place number: " << this->place_number_ << std::endl;
+    std::cout << "Place number: " << place_number << std::endl;
   }
-}
 
-
-void PlaceNumberRecognizer::set_image(const cv::Mat &image)
-{
-  this->image_ = image;
-}
-
-
-void PlaceNumberRecognizer::set_color(const Color &color)
-{
-  this->color_ = color;
+  return "";
 }
