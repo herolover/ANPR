@@ -10,6 +10,8 @@
 #include "help_alg.h"
 #include "help_opencv.h"
 
+#include <iostream>
+
 
 std::string ANPR::recognize_number_plate(const cv::Mat &number_plate_image)
 {
@@ -66,44 +68,48 @@ std::string ANPR::recognize_number_plate(const cv::Mat &number_plate_image)
     return area_bound.height < height_threshold;
   }), areas.end());
 
-  threshold_image = cv::Mat(threshold_image.size(), threshold_image.type());
-  for (auto &area: areas)
-    draw_area(threshold_image, area, 255);
-
-//  cv::imshow("threshold_image", threshold_image);
-
-  tesseract::TessBaseAPI tess_api;
-  tess_api.Init("tessdata", "eng");
-  tess_api.SetPageSegMode(tesseract::PSM_SINGLE_LINE);
-  tess_api.SetVariable("tessedit_char_whitelist", "ABCEHKMOPTXY1234567890");
-
-  tess_api.SetImage(threshold_image.ptr(),
-                    threshold_image.size().width,
-                    threshold_image.size().height,
-                    threshold_image.elemSize(),
-                    threshold_image.step1());
-  char *text = tess_api.GetUTF8Text();
-  std::string number_plate_text = text;
-  delete[] text;
-
-  number_plate_text.erase(std::remove_if(number_plate_text.begin(),
-                                         number_plate_text.end(),
-                                         isspace),
-                          number_plate_text.end());
-
-
-  boost::match_results<std::string::iterator> what;
-  if (boost::regex_search(number_plate_text.begin(),
-                          number_plate_text.end(),
-                          what,
-                          boost::regex("[ABCEHKMOPTXY0][[:digit:]]{3}[ABCEHKMOPTXY0]{2}[[:digit:]]{2,3}")))
+  std::string number_plate_text;
+  if (areas.size() > 0)
   {
-    int zero_test_indexes[] = {0, 4, 5};
-    for (auto index: zero_test_indexes)
-      if (*(what[0].first + index) == '0')
-        *(what[0].first + index) = 'O';
+    threshold_image = cv::Mat(threshold_image.size(), threshold_image.type());
+    for (auto &area: areas)
+      draw_area(threshold_image, area, 255);
 
-    number_plate_text = std::string(what[0].first, what[0].second);
+//    cv::imshow("threshold_image", threshold_image);
+
+    tesseract::TessBaseAPI tess_api;
+    tess_api.Init("tessdata", "eng");
+    tess_api.SetPageSegMode(tesseract::PSM_SINGLE_LINE);
+    tess_api.SetVariable("tessedit_char_whitelist", "ABCEHKMOPTXY1234567890");
+
+    tess_api.SetImage(threshold_image.ptr(),
+                      threshold_image.size().width,
+                      threshold_image.size().height,
+                      threshold_image.elemSize(),
+                      threshold_image.step1());
+    char *text = tess_api.GetUTF8Text();
+    number_plate_text = text;
+    delete[] text;
+
+    number_plate_text.erase(std::remove_if(number_plate_text.begin(),
+                                           number_plate_text.end(),
+                                           isspace),
+                            number_plate_text.end());
+
+
+    boost::match_results<std::string::iterator> what;
+    if (boost::regex_search(number_plate_text.begin(),
+                            number_plate_text.end(),
+                            what,
+                            boost::regex("[ABCEHKMOPTXY0][[:digit:]]{3}[ABCEHKMOPTXY0]{2}[[:digit:]]{2,3}")))
+    {
+      int zero_test_indexes[] = {0, 4, 5};
+      for (auto index: zero_test_indexes)
+        if (*(what[0].first + index) == '0')
+          *(what[0].first + index) = 'O';
+
+      number_plate_text = std::string(what[0].first, what[0].second);
+    }
   }
 
   return number_plate_text;

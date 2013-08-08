@@ -2,6 +2,8 @@
 
 #include "help_alg.h"
 
+#include <queue>
+
 
 double vec_RMS(const cv::Mat &vec)
 {
@@ -42,20 +44,44 @@ void draw_area(cv::Mat &dst_img, std::vector<cv::Point> &area, int color)
 }
 
 
-void walk_on_area(cv::Mat &threshold_img, std::vector<cv::Point> &area,
-                  const cv::Point &point, int pixel_value)
+void find_filled_area(cv::Mat &threshold_img, std::vector<cv::Point> &area,
+                  const cv::Point &start_point, int pixel_value)
 {
-  if (point.x >= 0 && point.x < threshold_img.cols &&
-      point.y >= 0 && point.y < threshold_img.rows &&
-      threshold_img.at<unsigned char>(point) == pixel_value)
-  {
-    threshold_img.at<unsigned char>(point) = pixel_value ^ 0xff;
-    area.push_back(point);
+  std::queue<cv::Point> points;
+  points.push(start_point);
 
-    walk_on_area(threshold_img, area, point + cv::Point(-1,  0), pixel_value);
-    walk_on_area(threshold_img, area, point + cv::Point( 1,  0), pixel_value);
-    walk_on_area(threshold_img, area, point + cv::Point( 0, -1), pixel_value);
-    walk_on_area(threshold_img, area, point + cv::Point( 0,  1), pixel_value);
+  while (!points.empty())
+  {
+    const cv::Point &p = points.front();
+
+    if (threshold_img.at<unsigned char>(p) == pixel_value)
+    {
+      threshold_img.at<unsigned char>(p) = ~pixel_value;
+      area.push_back(p);
+
+      if (p.x - 1 >= 0 &&
+          threshold_img.at<unsigned char>(p + cv::Point(-1,  0)) == pixel_value)
+      {
+        points.push(p + cv::Point(-1,  0));
+      }
+      if (p.x + 1 < threshold_img.cols &&
+          threshold_img.at<unsigned char>(p + cv::Point( 1,  0)) == pixel_value)
+      {
+        points.push(p + cv::Point( 1,  0));
+      }
+      if (p.y - 1 >= 0 &&
+          threshold_img.at<unsigned char>(p + cv::Point( 0, -1)) == pixel_value)
+      {
+        points.push(p + cv::Point( 0, -1));
+      }
+      if (p.y + 1 < threshold_img.rows &&
+          threshold_img.at<unsigned char>(p + cv::Point( 0,  1)) == pixel_value)
+      {
+        points.push(p + cv::Point( 0,  1));
+      }
+    }
+
+    points.pop();
   }
 }
 
@@ -70,7 +96,7 @@ std::vector<std::vector<cv::Point> > find_filled_areas(cv::Mat threshold_img,
       if (threshold_img.at<unsigned char>(y, x) == pixel_value)
       {
         std::vector<cv::Point> area;
-        walk_on_area(threshold_img, area, cv::Point(x, y), pixel_value);
+        find_filled_area(threshold_img, area, cv::Point(x, y), pixel_value);
         areas.push_back(area);
       }
 
