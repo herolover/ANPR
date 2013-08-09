@@ -37,7 +37,7 @@ cv::Rect operator * (const cv::Rect &rect, double k)
 }
 
 
-void draw_area(cv::Mat &dst_img, std::vector<cv::Point> &area, int color)
+void draw_area(cv::Mat &dst_img, std::vector<cv::Point> &area, unsigned char color)
 {
   for (auto &point: area)
     dst_img.at<unsigned char>(point) = color;
@@ -45,7 +45,7 @@ void draw_area(cv::Mat &dst_img, std::vector<cv::Point> &area, int color)
 
 
 void find_filled_area(cv::Mat &threshold_img, std::vector<cv::Point> &area,
-                  const cv::Point &start_point, int pixel_value)
+                  const cv::Point &start_point, unsigned char pixel_value)
 {
   std::queue<cv::Point> points;
   points.push(start_point);
@@ -87,7 +87,7 @@ void find_filled_area(cv::Mat &threshold_img, std::vector<cv::Point> &area,
 
 
 std::vector<std::vector<cv::Point> > find_filled_areas(cv::Mat threshold_img,
-                                                       int pixel_value)
+                                                       unsigned char pixel_value)
 {
   std::vector<std::vector<cv::Point> > areas;
 

@@ -10,8 +10,6 @@
 #include "help_alg.h"
 #include "help_opencv.h"
 
-#include <iostream>
-
 
 std::string ANPR::recognize_number_plate(const cv::Mat &number_plate_image)
 {
@@ -71,22 +69,22 @@ std::string ANPR::recognize_number_plate(const cv::Mat &number_plate_image)
   std::string number_plate_text;
   if (areas.size() > 0)
   {
-    threshold_image = cv::Mat(threshold_image.size(), threshold_image.type());
+    cv::Mat tess_image = cv::Mat::zeros(threshold_image.size(), threshold_image.type());
     for (auto &area: areas)
-      draw_area(threshold_image, area, 255);
+      draw_area(tess_image, area, 255);
 
-//    cv::imshow("threshold_image", threshold_image);
+//    cv::imshow("tess_image", tess_image);
 
     tesseract::TessBaseAPI tess_api;
     tess_api.Init("tessdata", "eng");
     tess_api.SetPageSegMode(tesseract::PSM_SINGLE_LINE);
     tess_api.SetVariable("tessedit_char_whitelist", "ABCEHKMOPTXY1234567890");
 
-    tess_api.SetImage(threshold_image.ptr(),
-                      threshold_image.size().width,
-                      threshold_image.size().height,
-                      threshold_image.elemSize(),
-                      threshold_image.step1());
+    tess_api.SetImage(tess_image.ptr(),
+                      tess_image.size().width,
+                      tess_image.size().height,
+                      tess_image.elemSize(),
+                      tess_image.step1());
     char *text = tess_api.GetUTF8Text();
     number_plate_text = text;
     delete[] text;
