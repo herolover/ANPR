@@ -21,13 +21,14 @@ void load_image();
 void process();
 
 
-const std::string folder = "../../test_img/my/";
+const std::string folder = "../../test_img/__new/";
 
 boost::filesystem::path path(folder);
 int max_image_index = std::distance(boost::filesystem::directory_iterator(path),
                                     boost::filesystem::directory_iterator());
 
 int image_index = 0;
+cv::Point2i search_rect_center;
 cv::Rect search_rect;
 cv::Mat image;
 cv::Mat small_image;
@@ -73,16 +74,19 @@ void on_mouse(int event, int x, int y, int, void *)
 
   if (event == CV_EVENT_LBUTTONDOWN)
   {
-    search_rect.x = x;
-    search_rect.y = y;
+    search_rect_center.x = x;
+    search_rect_center.y = y;
     capture = true;
-
   }
 
   if (capture)
   {
-    search_rect.width = x - search_rect.x;
-    search_rect.height = y - search_rect.y;
+    int half_width = std::abs(x - search_rect_center.x);
+    int half_height = std::abs(y - search_rect_center.y);
+    search_rect.width = half_width * 2;
+    search_rect.height = half_height * 2;
+    search_rect.x = search_rect_center.x - half_width;
+    search_rect.y = search_rect_center.y - half_height;
 
     cv::Mat tmp_smal_image = small_image.clone();
     cv::rectangle(tmp_smal_image, search_rect, cv::Scalar(0, 0, 255), 2);
