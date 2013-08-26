@@ -14,7 +14,6 @@ double vec_RMS(const cv::Mat &vec)
   return sqrt(square_sum / vec.cols);
 }
 
-
 double vec_sum(const cv::Mat &vec)
 {
   double sum = 0.0;
@@ -23,7 +22,6 @@ double vec_sum(const cv::Mat &vec)
 
   return sum;
 }
-
 
 cv::Rect operator * (const cv::Rect &rect, double k)
 {
@@ -36,13 +34,11 @@ cv::Rect operator * (const cv::Rect &rect, double k)
   return new_rect;
 }
 
-
 void draw_area(cv::Mat &dst_img, std::vector<cv::Point> &area, unsigned char color)
 {
   for (auto &point: area)
     dst_img.at<unsigned char>(point) = color;
 }
-
 
 void find_filled_area(cv::Mat &threshold_img, std::vector<cv::Point> &area,
                   const cv::Point &start_point, unsigned char pixel_value)
@@ -85,7 +81,6 @@ void find_filled_area(cv::Mat &threshold_img, std::vector<cv::Point> &area,
   }
 }
 
-
 std::vector<std::vector<cv::Point> > find_filled_areas(cv::Mat threshold_img,
                                                        unsigned char pixel_value)
 {
@@ -102,7 +97,6 @@ std::vector<std::vector<cv::Point> > find_filled_areas(cv::Mat threshold_img,
 
   return areas;
 }
-
 
 void adaptive_threshold(const cv::Mat &src_img, cv::Mat &dst_img, double thresh)
 {
@@ -127,7 +121,6 @@ void adaptive_threshold(const cv::Mat &src_img, cv::Mat &dst_img, double thresh)
     }
 }
 
-
 double compute_skew_correction_angle(const cv::Mat &image, int threshold)
 {
   cv::Mat horizontal_edge_image = compute_edge_image(image, ET_HORIZONTAL);
@@ -146,19 +139,6 @@ double compute_skew_correction_angle(const cv::Mat &image, int threshold)
 
   return skew_correction_angle;
 }
-
-
-cv::Mat convert_to_grayscale_and_remove_noise(const cv::Mat &image)
-{
-  cv::Mat grayscale_image;
-  cv::cvtColor(image, grayscale_image, CV_RGB2GRAY);
-
-  cv::Mat denoised_image;
-  cv::medianBlur(grayscale_image, denoised_image, 3);
-
-  return denoised_image;
-}
-
 
 cv::Mat compute_edge_image(const cv::Mat &image, EdgeType edge_type)
 {
@@ -183,7 +163,6 @@ cv::Mat compute_edge_image(const cv::Mat &image, EdgeType edge_type)
 
   return threshold_edge_image;
 }
-
 
 cv::Mat make_skew_matrix(double angle, double skew_center)
 {

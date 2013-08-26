@@ -5,7 +5,6 @@
 
 #include <opencv2/opencv.hpp>
 
-
 double vec_RMS(const cv::Mat &vec);
 double vec_sum(const cv::Mat &vec);
 
@@ -20,8 +19,6 @@ void adaptive_threshold(const cv::Mat &src_img, cv::Mat &dst_img, double thresh)
 double compute_skew_correction_angle(const cv::Mat &image, int threshold=300);
 cv::Mat make_skew_matrix(double angle, double skew_center);
 
-cv::Mat convert_to_grayscale_and_remove_noise(const cv::Mat &image);
-
 enum EdgeType
 {
   ET_VERTICAL,
@@ -32,5 +29,36 @@ cv::Mat compute_edge_image(const cv::Mat &image, EdgeType edge_type);
 
 double is_rectangle(const std::vector<cv::Point> &area);
 
+template<int ChannelsCount>
+void set_white_balance(const cv::Mat &src, cv::Mat &dst,
+                       const cv::Vec<unsigned char, ChannelsCount> &black,
+                       const cv::Vec<unsigned char, ChannelsCount> &white)
+{
+  dst = cv::Mat::zeros(src.size(), src.type());
+  for (int i = 0; i < src.rows; ++i)
+  {
+    for (int j = 0; j < src.cols; ++j)
+    {
+      const cv::Vec<unsigned char, ChannelsCount> &src_color = src.at<cv::Vec<unsigned char, ChannelsCount>>(i, j);
+      cv::Vec<unsigned char, ChannelsCount> &dst_color = dst.at<cv::Vec<unsigned char, ChannelsCount>>(i, j);
+      for (int k = 0; k < ChannelsCount; ++k)
+      {
+        double value = (src_color[k] - black[k]) * 255.0 / (white[k] - black[k]);
+        if (value < 0.0)
+        {
+          dst_color[k] = 0;
+        }
+        else if (value > 255.0)
+        {
+          dst_color[k] = 255;
+        }
+        else
+        {
+          dst_color[k] = (int)value;
+        }
+      }
+    }
+  }
+}
 
 #endif // HELP_OPENCV_H
