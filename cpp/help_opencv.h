@@ -17,7 +17,7 @@ std::vector<std::vector<cv::Point> > find_filled_areas(cv::Mat threshold_img, un
 
 void adaptive_threshold(const cv::Mat &src_img, cv::Mat &dst_img, double thresh);
 
-double compute_skew_correction_angle(const cv::Mat &image);
+double compute_skew_correction_angle(const cv::Mat &image, int threshold=300);
 cv::Mat make_skew_matrix(double angle, double skew_center);
 
 cv::Mat convert_to_grayscale_and_remove_noise(const cv::Mat &image);
@@ -29,6 +29,8 @@ enum EdgeType
 };
 
 cv::Mat compute_edge_image(const cv::Mat &image, EdgeType edge_type);
+
+double is_rectangle(const std::vector<cv::Point> &area);
 
 
 #endif // HELP_OPENCV_H

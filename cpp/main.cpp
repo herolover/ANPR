@@ -21,13 +21,13 @@ void load_image();
 void process();
 
 
-const std::string folder = "../../test_img/my_new/";
+const std::string folder = "../../test_img/my/";
 
 boost::filesystem::path path(folder);
 int max_image_index = std::distance(boost::filesystem::directory_iterator(path),
                                     boost::filesystem::directory_iterator());
 
-int image_index = 5;
+int image_index = 0;
 cv::Rect search_rect;
 cv::Mat image;
 cv::Mat small_image;
@@ -130,4 +130,5 @@ void load_image()
 void process()
 {
   std::cout << ANPR::recognize_number_plate(image(search_rect * (1.0 / ratio))) << std::endl;
+//  std::cout << recognize_place_number(image, Color(0, 0, 196)) << std::endl;
 }

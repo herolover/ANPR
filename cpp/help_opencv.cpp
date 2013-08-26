@@ -128,12 +128,12 @@ void adaptive_threshold(const cv::Mat &src_img, cv::Mat &dst_img, double thresh)
 }
 
 
-double compute_skew_correction_angle(const cv::Mat &image)
+double compute_skew_correction_angle(const cv::Mat &image, int threshold)
 {
   cv::Mat horizontal_edge_image = compute_edge_image(image, ET_HORIZONTAL);
 
   std::vector<cv::Vec2f> lines;
-  cv::HoughLines(horizontal_edge_image, lines, 1.0, CV_PI / 360.0, 300);
+  cv::HoughLines(horizontal_edge_image, lines, 1.0, CV_PI / 360.0, threshold);
 
   double skew_correction_angle = CV_PI * 0.5;
   if (lines.size() > 0)
@@ -192,4 +192,52 @@ cv::Mat make_skew_matrix(double angle, double skew_center)
   skew_matrix.at<double>(1, 2) = -skew_center / tan(angle);
 
   return skew_matrix;
+}
+
+double is_rectangle(const std::vector<cv::Point> &area)
+{
+  double coeffs[][10] = {
+    {1.0, 1.0,  1.0,  1.0,  1.0,  1.0,  1.0,  1.0, 1.0, 1.0},
+    {1.0, 1.0,  1.0,  1.0,  1.0,  1.0,  1.0,  1.0, 1.0, 1.0},
+    {1.0, 1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, 1.0, 1.0},
+    {1.0, 1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, 1.0, 1.0},
+    {1.0, 1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, 1.0, 1.0},
+    {1.0, 1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, 1.0, 1.0},
+    {1.0, 1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, 1.0, 1.0},
+    {1.0, 1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, 1.0, 1.0},
+    {1.0, 1.0,  1.0,  1.0,  1.0,  1.0,  1.0,  1.0, 1.0, 1.0},
+    {1.0, 1.0,  1.0,  1.0,  1.0,  1.0,  1.0,  1.0, 1.0, 1.0}
+  };
+
+  int counts[10][10];
+  for (int i = 0; i < 10; ++i)
+  {
+    for (int j = 0; j < 10; ++j)
+    {
+      counts[i][j] = 0;
+    }
+  }
+
+  cv::Rect area_bound = cv::boundingRect(area);
+  double w = area_bound.width / 10.0;
+  double h = area_bound.height / 10.0;
+
+  for (auto &point: area)
+  {
+    int x = (point.x - area_bound.x) / w;
+    int y = (point.y - area_bound.y) / h;
+    counts[y][x] += 1;
+  }
+
+  double res = 0.0;
+  double max_res = 38.0;
+  for (int i = 0; i < 10; ++i)
+  {
+    for (int j = 0; j < 10; ++j)
+    {
+      res += counts[i][j] / w / h * coeffs[i][j];
+    }
+  }
+
+  return res / max_res;
 }

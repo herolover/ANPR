@@ -1,36 +1,34 @@
 #include "place_number_recognizer.h"
 
 #include "help_opencv.h"
+#include "help_alg.h"
 
 #include <algorithm>
 
 #include <tesseract/baseapi.h>
 
-
 std::string recognize_place_number(const cv::Mat &image, const Color &color)
 {
-  double ratio = 0.3;
+  double ratio = 0.4;
   cv::Mat small_image;
   cv::resize(image, small_image, cv::Size(), ratio, ratio);
 
-  cv::Mat blured_image;
-  cv::medianBlur(small_image, blured_image, 5);
-
-  cv::Mat difference_image(blured_image.size(), CV_8UC1);
-  for (int i = 0; i < blured_image.cols; ++i)
-    for (int j = 0; j < blured_image.rows; ++j)
+  cv::Mat difference_image(small_image.size(), CV_8UC1);
+  for (int i = 0; i < small_image.cols; ++i)
+    for (int j = 0; j < small_image.rows; ++j)
     {
-      cv::Vec<int, 3> diff = (cv::Vec<int, 3>)blured_image.at<Color>(j, i) - (cv::Vec<int, 3>)color;
+      cv::Vec<int, 3> diff = (cv::Vec<int, 3>)small_image.at<Color>(j, i) - (cv::Vec<int, 3>)color;
+      double diff_norm = sqr(diff(0)) + sqr(diff(1)) + sqr(diff(2));
 
-      double value = 255.0 * cv::norm(diff) / sqrt(255.0 * 255.0 + 255.0 * 255.0 + 255.0 * 255.0);
+      double value = 255.0 * sqrt(diff_norm / (255.0 * 255.0 + 255.0 * 255.0 + 255.0 * 255.0));
 
       difference_image.at<unsigned char>(j, i) = (unsigned char)value;
     }
 
-  cv::imshow("diff", difference_image);
+  cv::imshow("difference_image", difference_image);
 
   cv::Mat threshold_image;
-  cv::threshold(difference_image, threshold_image, 60.0, 255.0, CV_THRESH_BINARY_INV);
+  cv::threshold(difference_image, threshold_image, 80.0, 255.0, CV_THRESH_BINARY_INV);
 
   cv::imshow("threshold_image", threshold_image);
 
@@ -42,9 +40,7 @@ std::string recognize_place_number(const cv::Mat &image, const Color &color)
   {
     cv::Rect area_bound = cv::boundingRect(area);
 
-    return area_bound.width / (double)area_bound.height > 2 ||
-           area_bound.height / (double)area_bound.width > 2 ||
-           area.size() < 40 || area_bound.x > image_center_x;
+    return area_bound.x > image_center_x || area.size() < 40;
   }), filled_areas.end());
 
   if (filled_areas.size() == 0)
@@ -52,45 +48,39 @@ std::string recognize_place_number(const cv::Mat &image, const Color &color)
     return "";
   }
 
-  auto nearest_area_it = std::max_element(filled_areas.begin(), filled_areas.end(),
-                                          [](const std::vector<cv::Point> &a,
-                                             const std::vector<cv::Point> &b)
+  auto place_number_area = std::max_element(filled_areas.begin(), filled_areas.end(),
+                                            [](const std::vector<cv::Point> &a,
+                                               const std::vector<cv::Point> &b)
   {
-    double a_center_x = 0.0;
-    for (auto &point: a)
-    {
-      a_center_x += point.x;
-    }
-    a_center_x /= a.size();
-
-    double b_center_x = 0.0;
-    for (auto &point: b)
-    {
-      b_center_x += point.x;
-    }
-    b_center_x /= b.size();
-
-    return a_center_x < b_center_x;
+    return is_rectangle(a) < is_rectangle(b);
   });
 
-  cv::Rect area_bound = cv::boundingRect(*nearest_area_it);
+  cv::Rect area_bound = cv::boundingRect(*place_number_area);
+  int w = area_bound.width / 12;
+  int h = area_bound.height / 12;
+  area_bound.x += w;
+  area_bound.y += h;
+  area_bound.width -= 2 * w;
+  area_bound.height -= 2 * h;
 
-  double angle = compute_skew_correction_angle(threshold_image(area_bound));
+  double angle = compute_skew_correction_angle(threshold_image(area_bound), 150);
   cv::Mat skew_matrix = make_skew_matrix(angle, area_bound.width * 0.5);
 
   cv::Mat area_image = image(area_bound * (1.0 / ratio));
 
-  cv::Mat blured_area;
-  cv::medianBlur(area_image, blured_area, 5);
+  cv::Mat blured_image;
+  cv::medianBlur(area_image, blured_image, 3);
 
   cv::Mat deskewed_area;
-  cv::warpAffine(area_image, deskewed_area, skew_matrix, image.size());
+  cv::warpAffine(blured_image, deskewed_area, skew_matrix, area_image.size());
 
   cv::Mat grayscale_area;
   cv::cvtColor(deskewed_area, grayscale_area, CV_RGB2GRAY);
 
+  cv::imshow("grayscale_area", grayscale_area);
+
   cv::Mat threshold_area;
-  cv::threshold(grayscale_area, threshold_area, 128.0, 255.0, CV_THRESH_BINARY_INV);
+  cv::threshold(grayscale_area, threshold_area, 110.0, 255.0, CV_THRESH_BINARY_INV);
 
   auto area_filled_areas = find_filled_areas(threshold_area.clone(), 255);
   auto max_area = std::max_element(area_filled_areas.begin(),
@@ -103,7 +93,10 @@ std::string recognize_place_number(const cv::Mat &image, const Color &color)
 
     return a_bound.area() < b_bound.area();
   });
+
+  cv::imshow("threshold_area_before", threshold_area);
   draw_area(threshold_area, *max_area, 0);
+
   cv::imshow("threshold_area", threshold_area);
 
   tesseract::TessBaseAPI tess_api;
