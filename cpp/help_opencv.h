@@ -43,7 +43,7 @@ void set_white_balance(const cv::Mat &src, cv::Mat &dst,
       cv::Vec<unsigned char, ChannelsCount> &dst_color = dst.at<cv::Vec<unsigned char, ChannelsCount>>(i, j);
       for (int k = 0; k < ChannelsCount; ++k)
       {
-        double value = (src_color[k] - black[k]) * 255.0 / (white[k] - black[k]);
+        double value = ((int)src_color[k] - (int)black[k]) * 255.0 / ((int)white[k] - (int)black[k]);
         if (value < 0.0)
         {
           dst_color[k] = 0;
