@@ -6,6 +6,8 @@ test/
 convert_camera_params/
 test_sap/
 test_sync/
+*-build/
+*.autosave
 *.out
 *.gch
 *.cbp
@@ -24,3 +26,4 @@ points
 *.creator.user
 *.files
 *.includes
+*.user
