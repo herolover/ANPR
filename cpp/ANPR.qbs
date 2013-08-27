@@ -25,7 +25,8 @@ Project {
             "-lopencv_imgproc",
             "-ltesseract",
             "-lboost_system",
-            "-lboost_filesystem"
+            "-lboost_filesystem",
+            "-lboost_regex"
         ]
     }
 }

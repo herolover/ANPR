@@ -1,11 +1,12 @@
 #include "ANPR.h"
 
 #include <string>
+#include <algorithm>
 
-//#include <boost/format.hpp>
-//#include <boost/regex.hpp>
+#include <boost/format.hpp>
+#include <boost/regex.hpp>
 
-//#include <tesseract/baseapi.h>
+#include <tesseract/baseapi.h>
 
 #include "help_alg.h"
 #include "help_opencv.h"
@@ -13,28 +14,47 @@
 
 std::string ANPR::recognize_number_plate(const cv::Mat &number_plate_image)
 {
-  cv::Mat grayscale_image = convert_to_grayscale_and_remove_noise(number_plate_image);
-  cv::imshow("grayscale_image", grayscale_image);
+  cv::Mat denoised_image;
+  cv::medianBlur(number_plate_image, denoised_image, 3);
 
-  cv::Mat vert_edge = compute_edge_image(grayscale_image, ET_VERTICAL);
-  cv::imshow("vert_edge", vert_edge);
+  int center_x = denoised_image.cols / 2;
+  int center_y = denoised_image.rows / 2;
+  int half_width = denoised_image.cols / 10 / 2;
+  int half_height = denoised_image.rows / 10 / 2;
+  cv::Mat search_area = denoised_image(cv::Range(center_y - half_height,
+                                                 center_y + half_height),
+                                       cv::Range(center_x - half_width,
+                                                 center_x + half_width));
+  auto minmax_color = std::minmax_element(search_area.begin<cv::Vec<unsigned char, 3>>(),
+                                          search_area.end<cv::Vec<unsigned char, 3>>(),
+                                          [](const cv::Vec<unsigned char, 3> &a,
+                                             const cv::Vec<unsigned char, 3> &b)
+  {
+    return cv::norm(a) < cv::norm(b);
+  });
 
-//  cv::Mat proc_image = convert_to_grayscale_and_remove_noise(number_plate_image);
+  cv::Mat balanced_image;
+  set_white_balance<3>(denoised_image, balanced_image,
+                       *minmax_color.first, *minmax_color.second);
 
-//  cv::imshow("proc_image", proc_image);
+  cv::Mat grayscale_image;
+  cv::cvtColor(balanced_image, grayscale_image, CV_RGB2GRAY);
 
-//  cv::Mat blured_image;
-//  cv::GaussianBlur(proc_image, blured_image, cv::Size(51, 51), 0);
+  cv::Mat threshold_image;
+  cv::threshold(grayscale_image, threshold_image, 80.0, 255.0, CV_THRESH_BINARY);
 
-//  cv::Mat equalized_image;
-//  cv::divide(proc_image, blured_image, equalized_image, 256.0);
+  std::vector<cv::Point> area;
+  int pos = std::distance(search_area.begin<cv::Vec<unsigned char, 3>>(),
+                          minmax_color.second);
+  cv::Point white_color_pos;
+  white_color_pos.x = center_x - half_width + (pos % search_area.cols);
+  white_color_pos.y = center_y - half_height + (pos / search_area.cols);
+  std::cout << white_color_pos << std::endl;
+  find_filled_area(threshold_image, area, white_color_pos, 255);
 
-//  cv::imshow("equalized_image", equalized_image);
-
-//  cv::Mat threshold_image;
-//  cv::threshold(equalized_image, threshold_image, 220.0, 255.0, CV_THRESH_BINARY_INV);
-
-////  cv::imshow("threshold_image_prev", threshold_image);
+  cv::Mat area_image = cv::Mat::zeros(threshold_image.size(), CV_8UC1);
+  draw_area(area_image, area, 255);
+  cv::imshow("area_image", area_image);
 
 //  std::vector<std::vector<cv::Point> > areas = find_filled_areas(threshold_image.clone(), 255);
 

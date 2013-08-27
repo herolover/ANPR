@@ -41,7 +41,7 @@ void draw_area(cv::Mat &dst_img, std::vector<cv::Point> &area, unsigned char col
 }
 
 void find_filled_area(cv::Mat &threshold_img, std::vector<cv::Point> &area,
-                  const cv::Point &start_point, unsigned char pixel_value)
+                      const cv::Point &start_point, unsigned char pixel_value)
 {
   std::queue<cv::Point> points;
   points.push(start_point);
