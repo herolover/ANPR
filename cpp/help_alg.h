@@ -217,6 +217,20 @@ std::vector<std::pair<InputIt, InputIt> > find_local_pairs(InputIt first,
 
 
 template<class InputIt>
+std::pair<InputIt, InputIt> find_central_bound(InputIt first,
+                                               InputIt last,
+                                               double threshold)
+{
+  auto global_maximum = std::max_element(first, last);
+  auto global_minimum = std::min_element(first, last);
+  double abs_threshold = (*global_maximum - *global_minimum) * threshold + *global_minimum;
+
+  return get_threshold_bound(first, last, first + std::distance(first, last) / 2,
+                             abs_threshold);
+}
+
+
+template<class InputIt>
 void save_to_file(const std::string &filename, InputIt first, InputIt last)
 {
   std::ofstream file(filename, std::ios_base::trunc);
