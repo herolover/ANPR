@@ -10,11 +10,13 @@ double vec_sum(const cv::Mat &vec);
 
 cv::Rect operator * (const cv::Rect &rect, double k);
 
-void draw_area(cv::Mat &dst_img, std::vector<cv::Point> &area, unsigned char color);
+void draw_area(cv::Mat &dst_img, const std::vector<cv::Point> &area,
+               unsigned char color, const cv::Point &offset=cv::Point(0, 0));
 
 void find_filled_area(cv::Mat &threshold_img, std::vector<cv::Point> &area,
                       const cv::Point &start_point, unsigned char pixel_value);
-std::vector<std::vector<cv::Point> > find_filled_areas(cv::Mat threshold_img, unsigned char pixel_value);
+std::vector<std::pair<std::vector<cv::Point>, cv::Rect>> find_filled_areas(const cv::Mat &threshold_img,
+                                                                           unsigned char pixel_value);
 
 void adaptive_threshold(const cv::Mat &src_img, cv::Mat &dst_img, double thresh);
 
@@ -27,7 +29,10 @@ enum EdgeType
   ET_HORIZONTAL
 };
 
-cv::Mat compute_edge_image(const cv::Mat &image, EdgeType edge_type);
+bool is_intersects(const cv::Rect &a, const cv::Rect &b);
+cv::Rect expand(const cv::Rect &a, const cv::Rect &b);
+
+void compute_edge_image(const cv::Mat &src, cv::Mat &dst, EdgeType edge_type);
 
 double is_rectangle(const std::vector<cv::Point> &area);
 
@@ -61,6 +66,29 @@ void set_white_balance(const cv::Mat &src, cv::Mat &dst,
       }
     }
   }
+}
+
+template<int ChannelsCount>
+std::pair<cv::Vec<unsigned char, ChannelsCount>,
+          cv::Vec<unsigned char, ChannelsCount> > find_min_max_in_rect_center(const cv::Mat &image)
+{
+  cv::Rect rect_center;
+  rect_center.width = image.cols / 10;
+  rect_center.height = image.rows / 10;
+  rect_center.x = image.cols / 2 - rect_center.width / 2;
+  rect_center.y = image.rows / 2 - rect_center.height / 2;
+
+  cv::Mat search_image = image(rect_center);
+//  cv::imshow("search_image", search_image);
+  auto minmax_color = std::minmax_element(search_image.begin<cv::Vec<unsigned char, ChannelsCount>>(),
+                                          search_image.end<cv::Vec<unsigned char, ChannelsCount>>(),
+                                          [](const cv::Vec<unsigned char, ChannelsCount> &a,
+                                             const cv::Vec<unsigned char, ChannelsCount> &b)
+  {
+    return cv::norm(a) < cv::norm(b);
+  });
+
+  return std::make_pair(*minmax_color.first, *minmax_color.second);
 }
 
 #endif // HELP_OPENCV_H

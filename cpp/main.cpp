@@ -21,11 +21,8 @@ void load_image();
 void process();
 
 
-const std::string folder = "../../test_img/__new/";
-
-boost::filesystem::path path(folder);
-int max_image_index = std::distance(boost::filesystem::directory_iterator(path),
-                                    boost::filesystem::directory_iterator());
+std::string folder = "../../test_img/";
+int max_image_index = 0;
 
 int image_index = 0;
 cv::Point2i search_rect_center;
@@ -43,8 +40,13 @@ enum KEY
   SPACE_KEY = 32
 };
 
-int main()
+int main(int argc, char *argv[])
 {
+  folder += std::string(argv[1]) + "/";
+  boost::filesystem::path path(folder);
+  max_image_index = std::distance(boost::filesystem::directory_iterator(path),
+                                  boost::filesystem::directory_iterator());
+
   cv::namedWindow("image");
   cv::setMouseCallback("image", on_mouse);
 
@@ -133,6 +135,6 @@ void load_image()
 
 void process()
 {
-  std::cout << ANPR::recognize_number_plate(image(search_rect * (1.0 / ratio))) << std::endl;
-//  std::cout << recognize_place_number(image, Color(0, 0, 196)) << std::endl;
+  std::cout << ANPR::recognize_number_plate(image, search_rect * (1.0 / ratio)) << std::endl;
+//  std::cout << recognize_place_number(image, Color(0, 0, 196), search_rect * (1.0 / ratio)) << std::endl;
 }

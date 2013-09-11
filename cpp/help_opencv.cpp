@@ -3,6 +3,7 @@
 #include "help_alg.h"
 
 #include <queue>
+#include <utility>
 
 
 double vec_RMS(const cv::Mat &vec)
@@ -34,10 +35,11 @@ cv::Rect operator * (const cv::Rect &rect, double k)
   return new_rect;
 }
 
-void draw_area(cv::Mat &dst_img, std::vector<cv::Point> &area, unsigned char color)
+void draw_area(cv::Mat &dst_img, const std::vector<cv::Point> &area,
+               unsigned char color, const cv::Point &offset)
 {
   for (auto &point: area)
-    dst_img.at<unsigned char>(point) = color;
+    dst_img.at<unsigned char>(point - offset) = color;
 }
 
 void find_filled_area(cv::Mat &threshold_img, std::vector<cv::Point> &area,
@@ -52,7 +54,7 @@ void find_filled_area(cv::Mat &threshold_img, std::vector<cv::Point> &area,
 
     if (threshold_img.at<unsigned char>(p) == pixel_value)
     {
-      threshold_img.at<unsigned char>(p) = ~pixel_value;
+      threshold_img.at<unsigned char>(p) = pixel_value ^ 255;
       area.push_back(p);
 
       if (p.x - 1 >= 0 &&
@@ -81,18 +83,20 @@ void find_filled_area(cv::Mat &threshold_img, std::vector<cv::Point> &area,
   }
 }
 
-std::vector<std::vector<cv::Point> > find_filled_areas(cv::Mat threshold_img,
-                                                       unsigned char pixel_value)
+std::vector<std::pair<std::vector<cv::Point>, cv::Rect>> find_filled_areas(const cv::Mat &threshold_img,
+                                                                           unsigned char pixel_value)
 {
-  std::vector<std::vector<cv::Point> > areas;
+  cv::Mat threshold_img_clone = threshold_img.clone();
 
-  for (int x = 0; x < threshold_img.cols; ++x)
-    for (int y = 0; y < threshold_img.rows; ++y)
-      if (threshold_img.at<unsigned char>(y, x) == pixel_value)
+  std::vector<std::pair<std::vector<cv::Point>, cv::Rect>> areas;
+
+  for (int x = 0; x < threshold_img_clone.cols; ++x)
+    for (int y = 0; y < threshold_img_clone.rows; ++y)
+      if (threshold_img_clone.at<unsigned char>(y, x) == pixel_value)
       {
         std::vector<cv::Point> area;
-        find_filled_area(threshold_img, area, cv::Point(x, y), pixel_value);
-        areas.push_back(area);
+        find_filled_area(threshold_img_clone, area, cv::Point(x, y), pixel_value);
+        areas.push_back(std::make_pair(area, cv::boundingRect(area)));
       }
 
   return areas;
@@ -123,7 +127,8 @@ void adaptive_threshold(const cv::Mat &src_img, cv::Mat &dst_img, double thresh)
 
 double compute_skew_correction_angle(const cv::Mat &image, int threshold)
 {
-  cv::Mat horizontal_edge_image = compute_edge_image(image, ET_HORIZONTAL);
+  cv::Mat horizontal_edge_image;
+  compute_edge_image(image, horizontal_edge_image, ET_HORIZONTAL);
 
   std::vector<cv::Vec2f> lines;
   cv::HoughLines(horizontal_edge_image, lines, 1.0, CV_PI / 360.0, threshold);
@@ -140,28 +145,26 @@ double compute_skew_correction_angle(const cv::Mat &image, int threshold)
   return skew_correction_angle;
 }
 
-cv::Mat compute_edge_image(const cv::Mat &image, EdgeType edge_type)
+void compute_edge_image(const cv::Mat &src, cv::Mat &dst, EdgeType edge_type)
 {
-  double m[3][5] = {{-0.5, -1.0, 0.0, 1.0, 0.5},
-                    {-1.0, -2.0, 0.0, 2.0, 1.0},
-                    {-0.5, -1.0, 0.0, 1.0, 0.5}};
+  double m[3][5] = {{-0.0, -1.0, 0.0, 1.0, 0.0},
+                    {-0.0, -2.0, 0.0, 2.0, 0.0},
+                    {-0.0, -1.0, 0.0, 1.0, 0.0}};
   cv::Mat edge_matrix(3, 5, CV_64FC1, m);
 
   if (edge_type == ET_HORIZONTAL)
     edge_matrix = edge_matrix.t();
 
   cv::Mat edge_image_plus;
-  cv::filter2D(image, edge_image_plus, -1, edge_matrix);
+  cv::filter2D(src, edge_image_plus, -1, edge_matrix);
 
   cv::Mat edge_image_minus;
-  cv::filter2D(image, edge_image_minus, -1, -edge_matrix);
+  cv::filter2D(src, edge_image_minus, -1, -edge_matrix);
 
-  cv::Mat edge_image = edge_image_plus + edge_image_minus;
+  dst = edge_image_plus + edge_image_minus;
 
-  cv::Mat threshold_edge_image;
-  adaptive_threshold(edge_image, threshold_edge_image, 200);
-
-  return threshold_edge_image;
+//  cv::Mat threshold_edge_image;
+//  adaptive_threshold(edge_image, threshold_edge_image, 200);
 }
 
 cv::Mat make_skew_matrix(double angle, double skew_center)
@@ -219,4 +222,25 @@ double is_rectangle(const std::vector<cv::Point> &area)
   }
 
   return res / max_res;
+}
+
+
+bool is_intersects(const cv::Rect &a, const cv::Rect &b)
+{
+  return a.tl().x <= b.br().x && b.tl().x <= a.br().x &&
+         a.tl().y <= b.br().y && b.tl().y <= a.br().y;
+}
+
+
+cv::Rect expand(const cv::Rect &a, const cv::Rect &b)
+{
+  cv::Point tl;
+  tl.x = std::min(a.tl().x, b.tl().x);
+  tl.y = std::min(a.tl().y, b.tl().y);
+
+  cv::Point br;
+  br.x = std::max(a.br().x, b.br().x);
+  br.y = std::max(a.br().y, b.br().y);
+
+  return cv::Rect(tl, br);
 }

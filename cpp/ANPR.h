@@ -7,7 +7,7 @@
 
 namespace ANPR
 {
-  std::string recognize_number_plate(const cv::Mat &number_plate_image);
+  std::string recognize_number_plate(const cv::Mat &image, const cv::Rect &search_rect);
 }
 
 
