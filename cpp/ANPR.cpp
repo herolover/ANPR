@@ -95,11 +95,14 @@ std::string ANPR::recognize_number_plate(const cv::Mat &image,
     return "";
 
   /*
-   * Selection of the most likely group(a bad estimation)
+   * Selection of the most likely group
    */
   std::sort(groups.begin(), groups.end(),
             [](const AreaGroup &a, const AreaGroup &b)
   {
+    /*
+     * Bad estimation
+     */
     auto estimate = [](const AreaGroup &group)
     {
       double res = 0.0;
@@ -124,7 +127,6 @@ std::string ANPR::recognize_number_plate(const cv::Mat &image,
 
   /*
    * Remove small areas in the selected group(draw only height > mean_height * 0.8)
-   * (a bad criterion)
    */
   threshold_image = cv::Mat::zeros(threshold_image.size(), CV_8UC1);
   for (auto &area: groups[0].areas)
