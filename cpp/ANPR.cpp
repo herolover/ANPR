@@ -39,9 +39,10 @@ std::string ANPR::recognize_number_plate(const cv::Mat &image,
   cv::Mat threshold_image;
   cv::threshold(grained_image, threshold_image, 127.0, 255.0, CV_THRESH_BINARY_INV);
 
-  cv::Mat group_bounds_image = cv::Mat::zeros(threshold_image.size(), CV_8UC1);
-
   auto areas = find_filled_areas(threshold_image, 255);
+  /*
+   * Remove boundary areas, small areas(< 50 points), too wide or too narrow areas
+   */
   areas.erase(std::remove_if(areas.begin(), areas.end(),
                              [&threshold_image](const std::pair<std::vector<cv::Point>, cv::Rect> &area)
   {
@@ -52,6 +53,10 @@ std::string ANPR::recognize_number_plate(const cv::Mat &image,
            area.first.size() < 50 || k > 1.0 || k < 0.3;
   }), areas.end());
 
+  /*
+   * Divide areas into groups
+   */
+  cv::Mat group_bounds_image = cv::Mat::zeros(threshold_image.size(), CV_8UC1);
   for (auto &area: areas)
   {
     cv::Rect area_bound = area.second;
@@ -89,17 +94,9 @@ std::string ANPR::recognize_number_plate(const cv::Mat &image,
   if (groups.size() == 0)
     return "";
 
-  threshold_image = cv::Mat::zeros(threshold_image.size(), CV_8UC1);
-  for (auto &group: groups)
-  {
-    for (auto &area: group.areas)
-    {
-      draw_area(threshold_image, area->first, 255);
-    }
-    cv::rectangle(threshold_image, group.bound, cv::Scalar(255));
-  }
-  cv::imshow("threshold_image", threshold_image);
-
+  /*
+   * Selection of the most likely group(a bad estimation)
+   */
   std::sort(groups.begin(), groups.end(),
             [](const AreaGroup &a, const AreaGroup &b)
   {
@@ -123,22 +120,31 @@ std::string ANPR::recognize_number_plate(const cv::Mat &image,
     mean_height += area->second.height;
   }
   mean_height /= groups[0].areas.size();
-  std::cout << "Mean height: " << mean_height << std::endl;
+//  std::cout << "Mean height: " << mean_height << std::endl;
 
+  /*
+   * Remove small areas in the selected group(draw only height > mean_height * 0.8)
+   * (a bad criterion)
+   */
   threshold_image = cv::Mat::zeros(threshold_image.size(), CV_8UC1);
   for (auto &area: groups[0].areas)
   {
     double k = area->second.height / mean_height;
-    std::cout << area->second.height << " " << k << std::endl;
+//    std::cout << area->second.height << " " << k << std::endl;
     if (k > 0.8)
     {
       draw_area(threshold_image, area->first, 255);
     }
   }
-  cv::imshow("threshold_image2", threshold_image);
+//  cv::imshow("threshold_image2", threshold_image);
 
   tesseract::TessBaseAPI tess_api;
-  tess_api.Init("/home/anton/projects/ANPR/ANPR-build/qtc_Desktop-release/tessdata", "rus");
+  /*
+   * I could not specify `datapath` argument to use current directory, therefore
+   * tesseract uses the TESSDATA_PREFIX environment variable, please do not
+   * forget it
+   */
+  tess_api.Init(nullptr, "rus");
   tess_api.SetPageSegMode(tesseract::PSM_SINGLE_LINE);
 
   tess_api.SetImage(threshold_image.ptr(),
@@ -161,6 +167,9 @@ std::string ANPR::recognize_number_plate(const cv::Mat &image,
                           what,
                           boost::regex("[ABCEHKMOPTXY08][1234567890BO]{3}[ABCEHKMOPTXY08]{2}[1234567890BO]{0,3}")))
   {
+    /*
+     * Correction of some recognition errors
+     */
     std::unordered_map<char, char> digits = {
       {'O', '0'},
       {'B', '8'}

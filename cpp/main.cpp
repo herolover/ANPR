@@ -1,7 +1,6 @@
 #include <iostream>
-#include <fstream>
 #include <string>
-#include <map>
+#include <unordered_map>
 #include <functional>
 #include <algorithm>
 #include <utility>
@@ -14,61 +13,14 @@
 #include "help_opencv.h"
 
 
-void on_mouse(int event, int x, int y, int, void *);
-void left_key_handler();
-void right_key_handler();
-void load_image();
-void process();
-
-
-std::string folder = "../../test_img/";
+std::string folder;
 int max_image_index = 0;
-
 int image_index = 0;
 cv::Point2i search_rect_center;
 cv::Rect search_rect;
 cv::Mat image;
 cv::Mat small_image;
 double ratio = 1.0;
-
-
-enum KEY
-{
-  ESCAPE_KEY = 27,
-  LEFT_KEY = 65363,
-  RIGHT_KEY = 65361,
-  SPACE_KEY = 32
-};
-
-int main(int argc, char *argv[])
-{
-  folder += std::string(argv[1]) + "/";
-  boost::filesystem::path path(folder);
-  max_image_index = std::distance(boost::filesystem::directory_iterator(path),
-                                  boost::filesystem::directory_iterator());
-
-  cv::namedWindow("image");
-  cv::setMouseCallback("image", on_mouse);
-
-  load_image();
-
-  std::map<KEY, std::function<void ()>> key_handlers =
-  {
-    {LEFT_KEY, left_key_handler},
-    {RIGHT_KEY, right_key_handler},
-    {SPACE_KEY, process}
-  };
-
-  KEY key;
-  while ((key = (KEY)cv::waitKey()) != ESCAPE_KEY)
-  {
-    if (key_handlers.count(key) == 1)
-      key_handlers[key]();
-  }
-
-  return 0;
-}
-
 
 void on_mouse(int event, int x, int y, int, void *)
 {
@@ -99,27 +51,6 @@ void on_mouse(int event, int x, int y, int, void *)
     capture = false;
 }
 
-
-void left_key_handler()
-{
-  image_index += 1;
-  if (image_index >= max_image_index)
-    image_index = 0;
-
-  load_image();
-}
-
-
-void right_key_handler()
-{
-  image_index -= 1;
-  if (image_index < 0)
-    image_index = max_image_index - 1;
-
-  load_image();
-}
-
-
 void load_image()
 {
   std::cout << folder + boost::str(boost::format("%03d.jpg") % image_index) << std::endl;
@@ -132,9 +63,63 @@ void load_image()
   cv::imshow("image", small_image);
 }
 
+void left_key_handler()
+{
+  image_index += 1;
+  if (image_index >= max_image_index)
+    image_index = 0;
+
+  load_image();
+}
+
+void right_key_handler()
+{
+  image_index -= 1;
+  if (image_index < 0)
+    image_index = max_image_index - 1;
+
+  load_image();
+}
 
 void process()
 {
   std::cout << ANPR::recognize_number_plate(image, search_rect * (1.0 / ratio)) << std::endl;
 //  std::cout << recognize_place_number(image, Color(0, 0, 196), search_rect * (1.0 / ratio)) << std::endl;
+}
+
+int main(int argc, char *argv[])
+{
+  folder += std::string(argv[1]) + "/";
+  boost::filesystem::path path(folder);
+  max_image_index = std::distance(boost::filesystem::directory_iterator(path),
+                                  boost::filesystem::directory_iterator());
+
+  cv::namedWindow("image");
+  cv::setMouseCallback("image", on_mouse);
+
+  load_image();
+
+  enum KEY
+  {
+    ESCAPE_KEY = 27,
+    LEFT_KEY = 65363,
+    RIGHT_KEY = 65361,
+    SPACE_KEY = 32
+  };
+
+  std::unordered_map<int, std::function<void ()>> key_handlers =
+  {
+    {LEFT_KEY, left_key_handler},
+    {RIGHT_KEY, right_key_handler},
+    {SPACE_KEY, process}
+  };
+
+  KEY key;
+  while ((key = (KEY)cv::waitKey()) != ESCAPE_KEY)
+  {
+    if (key_handlers.count(key) == 1)
+      key_handlers[key]();
+  }
+
+  return 0;
 }
