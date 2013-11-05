@@ -18,8 +18,8 @@ struct AreaGroup
   std::vector<std::pair<std::vector<cv::Point>, cv::Rect> *> areas;
 };
 
-std::string ANPR::recognize_number_plate(const cv::Mat &image,
-                                         const cv::Rect &search_rect)
+std::pair<std::string, cv::Rect> ANPR::recognize_number_plate(const cv::Mat &image,
+                                                              const cv::Rect &search_rect)
 {
   cv::Mat number_plate_image = image(search_rect);
 
@@ -92,7 +92,7 @@ std::string ANPR::recognize_number_plate(const cv::Mat &image,
   }), groups.end());
 
   if (groups.size() == 0)
-    return "";
+    return std::make_pair("", cv::Rect());
 
   /*
    * Selection of the most likely group
@@ -206,5 +206,5 @@ std::string ANPR::recognize_number_plate(const cv::Mat &image,
     number_plate_text = std::string(what[0].first, what[0].second);
   }
 
-  return number_plate_text;
+  return std::make_pair(number_plate_text, groups[0].bound);
 }
