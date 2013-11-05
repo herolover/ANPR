@@ -1,15 +1,75 @@
-//#include "place_number_recognizer.h"
+#include "place_number_recognizer.h"
 
-//#include "help_opencv.h"
-//#include "help_alg.h"
+#include "help_opencv.h"
+#include "help_alg.h"
 
-//#include <algorithm>
+#include <algorithm>
 
-//#include <tesseract/baseapi.h>
+#include <tesseract/baseapi.h>
 
-//std::string recognize_place_number(const cv::Mat &image, const Color &color,
-//                                   const cv::Rect &search_rect)
-//{
+std::pair<std::string, cv::Rect> recognize_place_number(const cv::Mat &image,
+                                                        const Color &color,
+                                                        const cv::Rect &search_rect)
+{
+//  double ratio = 0.4;
+  cv::Mat small_image;
+//  cv::resize(image, small_image, cv::Size(), ratio, ratio);
+  small_image = image(search_rect);
+
+  cv::Mat gray;
+  cv::cvtColor(small_image, gray, CV_RGB2GRAY);
+
+  cv::Mat blur;
+  cv::medianBlur(gray, blur, 3);
+
+  cv::Mat canny;
+  cv::Canny(blur, canny, 80, 50);
+
+//  cv::imshow("canny", canny);
+
+  cv::Mat elem = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3));
+  cv::Mat dilate_img;
+  cv::dilate(canny, dilate_img, elem);
+
+  cv::imshow("dilate_img", dilate_img);
+
+
+  auto filled_areas = find_filled_areas(dilate_img, 255);
+  filled_areas.erase(std::remove_if(filled_areas.begin(), filled_areas.end(),
+                                    [&small_image](const std::pair<std::vector<cv::Point>, cv::Rect> &area)
+  {
+    double ratio = (double)area.second.width / area.second.height;
+    return ratio < 0.7 || ratio > 1.3 ||
+           area.second.x == 0 || area.second.y == 0 ||
+           area.second.x + area.second.width == small_image.cols ||
+           area.second.y + area.second.height == small_image.rows;
+  }), filled_areas.end());
+
+  cv::Mat threshold_img = cv::Mat::zeros(dilate_img.size(), CV_8UC1);
+  for (auto &area1: filled_areas)
+  {
+    for (auto &area2: filled_areas)
+    {
+      if (area1.second.contains(area2.second.tl()) &&
+          area1.second.contains(area2.second.br()))
+      {
+        double ratio1 = (double)area1.second.width / area1.second.height;
+        double ratio2 = (double)area2.second.width / area2.second.height;
+        double ratio = ratio1 / ratio2;
+
+        if (ratio > 0.9 && ratio < 1.1 &&
+            (double)area1.second.area() / area2.second.area() < 2.0)
+        {
+          draw_area(threshold_img, area1.first, 255);
+          break;
+        }
+      }
+    }
+//    std::cout << area.second << " " << is_rectangle(area.first) << std::endl;
+  }
+  cv::imshow("threshold_img", threshold_img);
+
+  return std::make_pair("", cv::Rect());
 //  double ratio = 0.4;
 //  cv::Mat small_image;
 //  cv::resize(image, small_image, cv::Size(), ratio, ratio);
@@ -128,4 +188,4 @@
 //  }), place_number.end());
 
 //  return place_number;
-//}
+}
