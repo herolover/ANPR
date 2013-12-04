@@ -11,7 +11,7 @@ typedef cv::Vec<unsigned char, 3> Color;
 
 std::pair<std::string, cv::Rect> recognize_place_number(const cv::Mat &image,
                                                         const Color &color,
-                                                        const cv::Rect &search_rect);
+                                                        const cv::Rect &number_plate_rect);
 
 
 #endif // PLACE_NUMBER_RECOGNIZER_H

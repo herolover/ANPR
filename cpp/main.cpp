@@ -83,8 +83,8 @@ void right_key_handler()
 
 void process()
 {
-  std::cout << ANPR::recognize_number_plate(image, search_rect * (1.0 / ratio)) << std::endl;
-//  std::cout << recognize_place_number(image, Color(0, 0, 196), search_rect * (1.0 / ratio)) << std::endl;
+//  std::cout << ANPR::recognize_number_plate(image, search_rect * (1.0 / ratio)).first << std::endl;
+  std::cout << recognize_place_number(image, Color(0, 0, 196), search_rect * (1.0 / ratio)).first << std::endl;
 }
 
 int main(int argc, char *argv[])
